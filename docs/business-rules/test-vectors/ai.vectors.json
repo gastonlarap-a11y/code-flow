@@ -1,0 +1,153 @@
+[
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/AiText.cs",
+    "sourceLines": "74-108",
+    "extractedFrom": [
+      "strips_colour_codes_from_a_cli_error",
+      "strips_osc_hyperlink_sequences",
+      "leaves_ordinary_text_untouched"
+    ],
+    "kind": "vector",
+    "unit": "strip_ansi",
+    "cases": [
+      {
+        "id": "strips-sgr-colour-codes",
+        "input": {
+          "text": "\u001b[0m\u001b[91m\u001b[1mError: \u001b[0mInsufficient balance."
+        },
+        "expected": {
+          "result": "Error: Insufficient balance."
+        },
+        "notes": "CSI sequences (ESC [ params final-byte in @-~) are dropped whole; opencode colours its errors this way."
+      },
+      {
+        "id": "strips-osc-hyperlink-sequences",
+        "input": {
+          "text": "see \u001b]8;;https://example.com\u0007the docs\u001b]8;;\u0007"
+        },
+        "expected": {
+          "result": "see the docs"
+        },
+        "notes": "OSC sequences (ESC ] ... terminated by BEL or ESC \\\\) are dropped whole, including the hyperlink URL itself."
+      },
+      {
+        "id": "leaves-ordinary-text-untouched",
+        "input": {
+          "text": "feat: add thing [skip ci]"
+        },
+        "expected": {
+          "result": "feat: add thing [skip ci]"
+        }
+      }
+    ]
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/AiText.cs",
+    "sourceLines": "814-830",
+    "extractedFrom": [
+      "reads_the_version_out_of_each_cli_banner",
+      "falls_back_to_the_banner_line_and_rejects_empty_output"
+    ],
+    "kind": "vector",
+    "unit": "parse_version",
+    "cases": [
+      {
+        "id": "claude-banner-with-parenthetical-label",
+        "input": {
+          "output": "2.0.14 (Claude Code)"
+        },
+        "expected": {
+          "result": "2.0.14"
+        }
+      },
+      {
+        "id": "codex-cli-banner",
+        "input": {
+          "output": "codex-cli 0.20.0\n"
+        },
+        "expected": {
+          "result": "0.20.0"
+        }
+      },
+      {
+        "id": "v-prefixed-banner",
+        "input": {
+          "output": "v1.4.2"
+        },
+        "expected": {
+          "result": "1.4.2"
+        }
+      },
+      {
+        "id": "leading-blank-lines-then-version",
+        "input": {
+          "output": "\n  0.9.1  \nsecond line"
+        },
+        "expected": {
+          "result": "0.9.1"
+        }
+      },
+      {
+        "id": "no-version-shaped-token-falls-back-to-whole-first-line",
+        "input": {
+          "output": "nightly build"
+        },
+        "expected": {
+          "result": "nightly build"
+        }
+      },
+      {
+        "id": "whitespace-only-output-is-none",
+        "input": {
+          "output": "   \n  "
+        },
+        "expected": {
+          "result": null
+        }
+      },
+      {
+        "id": "empty-output-is-none",
+        "input": {
+          "output": ""
+        },
+        "expected": {
+          "result": null
+        }
+      }
+    ]
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/AiText.cs",
+    "sourceLines": "37-56",
+    "extractedFrom": [
+      "a_credit_balance_refusal_counts_as_a_quota_signal",
+      "a_genuine_failure_is_not_a_quota_signal"
+    ],
+    "kind": "vector",
+    "unit": "quota_signal",
+    "cases": [
+      {
+        "id": "credit-balance-refusal-is-a-quota-signal",
+        "input": {
+          "text": "Error: Insufficient balance. Manage your billing here: https://x/billing"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "unknown-flag-error-is-not-a-quota-signal",
+        "input": {
+          "text": "error: unknown flag --nope"
+        },
+        "expected": {
+          "result": false
+        }
+      }
+    ],
+    "notes": "The full QUOTA_SIGNALS dictionary, lower-cased substring match: usage limit, rate limit, quota exceeded, resets at, try again in, limit reached, insufficient balance, insufficient credit, out of credit, payment required, billing."
+  }
+]

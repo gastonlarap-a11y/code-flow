@@ -1,0 +1,52 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/ApiClient/WebSocketStream.cs",
+  "sourceLines": "295-403",
+  "extractedFrom": [
+    "normalizes_http_schemes_preserving_case_of_the_rest",
+    "first_header_row_replaces_the_generated_one_and_repeats_append"
+  ],
+  "kind": "vector",
+  "unit": "several pure functions in the implementation — see each case's own \"unit\" field",
+  "cases": [
+    {
+      "id": "normalize-scheme",
+      "unit": "normalize_scheme",
+      "input": {
+        "urls": [
+          "https://Example.com/Chat",
+          "HTTP://example.com",
+          " wss://example.com "
+        ]
+      },
+      "expected": {
+        "results": [
+          "wss://Example.com/Chat",
+          "ws://example.com",
+          "wss://example.com"
+        ]
+      },
+      "notes": "Scheme matching is case-insensitive; the rest of the URL (including case) is preserved verbatim. Input is trimmed first."
+    },
+    {
+      "id": "header-merge-first-replaces-repeats-append",
+      "unit": "upgrade_request",
+      "input": {
+        "url": "wss://example.com",
+        "headers": [
+          ["Origin", "https://a.test"],
+          ["X-Tag", "one"],
+          ["X-Tag", "two"]
+        ],
+        "subprotocols": ["chat"]
+      },
+      "expected": {
+        "origin_header_count": 1,
+        "origin_header_value": "https://a.test",
+        "x_tag_values": ["one", "two"],
+        "sec_websocket_protocol": "chat"
+      },
+      "notes": "The first row for a header name replaces whatever the handshake auto-generated (Origin here); a repeated name appends instead of replacing."
+    }
+  ]
+}

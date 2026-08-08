@@ -1,0 +1,69 @@
+<Project>
+
+  <!--
+    Central package management. Every version here was read from api.nuget.org's flat-container
+    index on 2026-08-04, filtering out prereleases — docs/business-rules/90-ambiguities.md warned its own version
+    claims were perishable, and two of them had already moved by the time this was written.
+
+    Versions are pinned exactly (no floating ranges): this is a desktop app that ships signed
+    binaries, so a silent transitive bump between a local build and a release build is a defect,
+    not a convenience.
+  -->
+  <PropertyGroup>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Storage">
+    <!-- Bundles native SQLite through SQLitePCLRaw. Under NativeAOT it needs an explicit
+         SQLitePCL.raw.SetProvider call, which is one of the reasons the port publishes
+         self-contained rather than AOT (docs/business-rules/90-ambiguities.md). -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup Label="Storage — transitive security pin">
+    <!--
+      Microsoft.Data.Sqlite 10.0.10 resolves SQLitePCLRaw 2.1.11, which carries
+      CVE-2025-6965 (GHSA-2m69-gcr7-jv3q, CVSS 7.2): SQLite before 3.50.2 lets the number of
+      aggregate terms exceed the available columns, corrupting memory. The advisory's affected
+      range is `<= 2.1.11`.
+
+      Pinned to 2.1.12 — the last release of the same minor line, so no API break — rather than
+      the 3.x line: EF Core adopts SQLitePCLRaw 3.x in EF Core 11 (dotnet/efcore#36535), so with
+      Microsoft.Data.Sqlite 10.x that pairing is untested upstream, and 3.x also renames
+      lib.e_sqlite3 to SourceGear.sqlite3. Revisit when moving to Microsoft.Data.Sqlite 11.
+      This is a real fix, not a suppression: the vulnerable-transitive-package audit
+      must stay clean, and NU1903 stays an error so the next advisory is caught the same way.
+    -->
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <PackageVersion Include="SQLitePCLRaw.core" Version="2.1.12" />
+    <PackageVersion Include="SQLitePCLRaw.provider.e_sqlite3" Version="2.1.12" />
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <ItemGroup Label="Git">
+    <!-- Native binaries ship in a SEPARATE package resolved per-RID at runtime. That dynamic
+         probing is AOT-hostile and carries no official support statement. -->
+    <PackageVersion Include="LibGit2Sharp" Version="0.32.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="API client — MQTT">
+    <!-- MQTT 3.1.1 and 5.0 in one library. The reference uses two unrelated rumqttc stacks for the
+         two versions; MQTTnet covers both behind one client, which removes a whole duplicated code
+         path rather than adding one. Version verified against api.nuget.org, not recalled. -->
+    <PackageVersion Include="MQTTnet" Version="5.2.0.1603" />
+  </ItemGroup>
+
+  <ItemGroup Label="Terminal">
+    <!-- The only viable cross-platform .NET PTY today: single maintainer, 24 stars.
+         dotnet/runtime#128565 (built-in PTY) is open against milestone 12.0.0, so there is
+         nothing to wait for. Pinned deliberately; be ready to vendor a fork. -->
+    <PackageVersion Include="Porta.Pty" Version="1.0.7" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+  </ItemGroup>
+
+</Project>

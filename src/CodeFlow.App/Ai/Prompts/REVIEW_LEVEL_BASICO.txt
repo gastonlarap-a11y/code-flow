@@ -1,0 +1,2 @@
+## NIVEL DE REVISIÓN ACTIVO: básico
+Fast triage. Report ONLY findings with confidence ≥ 75 and severity `Blocker` or `Crítico`. Ignore `Mayor`/`Menor`/`Info`. Be brief: list nothing that is not a real, high-confidence blocker. If there is no high-confidence `Blocker` or `Crítico`, say so with ✅ after the CALIDAD line.

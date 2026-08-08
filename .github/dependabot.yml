@@ -1,0 +1,35 @@
+# Keeps the four dependency surfaces current, and — for the actions — keeps the pinned commit SHAs
+# in `ci.yml` from freezing. Pinning by SHA is only safe if something moves the pins; without this,
+# "pinned" becomes "abandoned".
+#
+# Weekly rather than daily: this is a two-person repository and a daily cadence produces more pull
+# requests than anyone reads, which is how a security bump ends up buried under version churn.
+version: 2
+
+updates:
+  # Central package management puts every version in Directory.Packages.props, so one ecosystem
+  # entry covers both projects.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Two independent pnpm packages, each with its own lockfile — there is no root package.json to
+  # cover them both.
+  - package-ecosystem: npm
+    directory: /renderer
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /shell
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

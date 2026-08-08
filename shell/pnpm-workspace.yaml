@@ -1,0 +1,30 @@
+# pnpm 10 moved these settings out of `package.json`; this file is where they live now. This
+# package is not a workspace root — the file exists only because it is the one place pnpm reads
+# them from.
+
+overrides:
+  # Reached only through electron-builder and eslint, so the denial of service is build-time rather
+  # than anything a user meets — but the build is what produces the shipped artefact, and
+  # `pnpm audit` is a gate in ci-web.yml.
+  #
+  # Second bump of this same pin. It was `<5.0.8: ^5.0.8` for GHSA-mh99-v99m-4gvg; GHSA-rgw5-rvv9-x895
+  # then found a way around that mitigation and moved the patched floor to 5.0.9, which is why main
+  # went red on a commit whose own pull-request checks had been green hours earlier — the advisory
+  # was published in between, and an audit gate is judged against a database that moves under it.
+  brace-expansion@<5.0.9: ^5.0.9
+
+  # Reached only through electron-builder's own schema validation, so nothing a user's input ever
+  # touches — but the gate does not grade on exploitability and neither should this. `ajv` wants the
+  # 3.x line, so the pin follows it: 3.1.5 is that line's patched release and the registry's `three`
+  # tag, not the `latest` 4.x (GHSA-7p8r-x3mc-p8w7).
+  #
+  # Caught by `scripts/release.sh` before it wrote anything, which is what that step is for.
+  fast-uri@<3.1.5: ^3.1.5
+
+# pnpm refuses to run a dependency's install scripts unless it is approved here. That approval used
+# to live in `node_modules/.modules.yaml`, which is not version-controlled — so it survived only
+# until someone deleted the directory, and then `pnpm install` exits 1 with nothing to say the
+# grant had ever been made. electron-winstaller unpacks the Squirrel bootstrapper the Windows
+# installer is built with.
+allowBuilds:
+  electron-winstaller: true

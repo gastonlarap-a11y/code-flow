@@ -1,0 +1,46 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Git/Branches.cs",
+  "sourceLines": "168-243",
+  "extractedFrom": [
+    "checkout_blocked_by_local_changes_is_tagged_for_the_ui",
+    "stashing_the_local_changes_unblocks_the_same_checkout"
+  ],
+  "kind": "scenario",
+  "unit": "checkout_local_branch(repo_path, name)",
+  "cases": [
+    {
+      "id": "checkout-blocked-by-uncommitted-changes",
+      "setup": {
+        "description": "Fixture repo built via libgit2 directly`): libgit2 in a fresh temp dir; `user.name`/`user.email` set locally; `core.autocrlf` set to false so checked-out content is byte-identical regardless of the host's global autocrlf. Commit 1 ('initial'): a.txt = 'one\\n' on the default branch (captured as `base`, whatever the host's default branch name is — not assumed to be 'main'). A branch named 'feature' is created from that commit and checked out. Commit 2 ('feature edit'): a.txt = 'feature\\n', committed on 'feature'. The fixture then checks back out to `base`, leaving a.txt = 'one\\n' in the working tree and HEAD on `base`."
+      },
+      "steps": [
+        "write 'uncommitted work\\n' to a.txt on disk, without staging it",
+        "call checkout_local_branch(repo_path, \"feature\")"
+      ],
+      "expected": {
+        "error": true,
+        "error_starts_with": "CHECKOUT_CONFLICT: "
+      },
+      "notes": "The uncommitted edit to a.txt collides with what checking out 'feature' would need to overwrite (a.txt also differs on 'feature'), so libgit2's safe checkout returns ErrorCode::Conflict, which checkout_error tags with the verbatim CHECKOUT_CONFLICT_PREFIX. The suffix after the prefix is libgit2's own English message and is not asserted byte-for-byte by the original test (assert!(err.starts_with(...))) — only the prefix is a contract."
+    },
+    {
+      "id": "stash-then-checkout-succeeds",
+      "setup": {
+        "description": "Same fixture as checkout-blocked-by-uncommitted-changes."
+      },
+      "steps": [
+        "write 'uncommitted work\\n' to a.txt on disk, without staging it",
+        "call checkout_local_branch(repo_path, \"feature\") — assert it errors (same conflict as the case above)",
+        "call stash::stash_save(repo_path, Some(\"auto stash\"), true)",
+        "call checkout_local_branch(repo_path, \"feature\") again"
+      ],
+      "expected": {
+        "second_checkout_error": false,
+        "a.txt_content": "feature\n",
+        "stash_count_after": 1
+      },
+      "notes": "Verifies the frontend's actual recovery path for GIT-003/CHECKOUT_CONFLICT_PREFIX: stashing the blocking uncommitted change (repoStore.ts's checkoutGuarded calls stashSave then retries the same checkout) unblocks the identical checkout call. The stash itself is left in place afterward (not popped) — the test only asserts the checkout now succeeds and exactly one stash exists."
+    }
+  ]
+}

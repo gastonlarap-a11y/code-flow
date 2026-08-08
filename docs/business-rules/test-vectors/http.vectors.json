@@ -1,0 +1,222 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/ApiClient/HttpSend.cs",
+  "sourceLines": "938-1642",
+  "extractedFrom": [
+    "sigv4_signature_matches_the_get_vanilla_vector",
+    "sigv4_headers_sign_host_date_and_payload_hash",
+    "digest_matches_the_rfc_2617_example",
+    "digest_falls_back_to_the_rfc_2069_form",
+    "auth_params_survive_commas_inside_quotes",
+    "canonical_query_sorts_and_encodes",
+    "set_cookie_defaults_to_the_request_host_and_root_path",
+    "set_cookie_reads_domain_path_and_expiry",
+    "declared_text_with_an_invalid_byte_is_still_text",
+    "binary_types_and_undeclared_binary_go_to_base64",
+    "undeclared_text_is_shown_and_vendor_json_counts_as_text",
+    "a_declared_legacy_charset_is_transcoded_not_replaced"
+  ],
+  "kind": "vector",
+  "unit": "several pure functions in the implementation — see each case's own \"unit\" field",
+  "cases": [
+    {
+      "id": "sigv4-get-vanilla",
+      "unit": "sigv4_sign(request, credentials, amz_date)",
+      "input": {
+        "method": "GET",
+        "canonical_uri": "/",
+        "canonical_query": "",
+        "headers": [
+          ["host", "example.amazonaws.com"],
+          ["x-amz-date", "20150830T123600Z"]
+        ],
+        "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "secret_key": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        "region": "us-east-1",
+        "service": "service",
+        "amz_date": "20150830T123600Z"
+      },
+      "expected": {
+        "signed_headers": "host;x-amz-date",
+        "signature": "5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31"
+      },
+      "notes": "AWS's published get-vanilla vector from aws-sig-v4-test-suite, byte-identical. payload_hash is the standard SHA-256 of the empty string (the original test computes it via a SHA-256 helper(b\"\") rather than embedding it literally)."
+    },
+    {
+      "id": "sigv4-headers-host-date-payload-hash",
+      "unit": "sigv4_headers(method, url, headers, payload_hash, access_key, secret_key, session_token, region, service, amz_date)",
+      "input": {
+        "method": "GET",
+        "url": "https://example.amazonaws.com/",
+        "headers": [["accept-encoding", "identity"]],
+        "payload_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "access_key": "AKIDEXAMPLE",
+        "secret_key": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        "session_token": "",
+        "region": "us-east-1",
+        "service": "service",
+        "amz_date": "20150830T123600Z"
+      },
+      "expected": {
+        "headers_contains": {
+          "x-amz-date": "20150830T123600Z",
+          "x-amz-content-sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "authorization": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=726c5c4879a6b4ccbbd3b24edbd6b8826d34f87450fbbf4e85546fc7ba9c1642"
+        },
+        "headers_absent": ["x-amz-security-token"]
+      },
+      "notes": "Confirms 'accept-encoding' is excluded from SignedHeaders (is_unsignable) and 'host' plus 'x-amz-content-sha256' are included. The signature is this same vector's credentials re-derived with x-amz-content-sha256 in the signed set, cross-checked against an independent implementation — not an AWS-published number."
+    },
+    {
+      "id": "digest-rfc2617-worked-example",
+      "unit": "digest_response",
+      "input": {
+        "hash": "Md5",
+        "session": false,
+        "username": "Mufasa",
+        "password": "Circle Of Life",
+        "realm": "testrealm@host.com",
+        "nonce": "dcd98b7102dd2f0e8b11d0f600bfb0c093",
+        "cnonce": "0a4f113b",
+        "nc": "00000001",
+        "qop": "auth",
+        "method": "GET",
+        "uri": "/dir/index.html"
+      },
+      "expected": { "response": "6629fae49393a05397450978507c4ef1" },
+      "notes": "The worked example from RFC 2617 section 3.5, which RFC 7616 keeps as its MD5 example."
+    },
+    {
+      "id": "digest-rfc2069-fallback",
+      "unit": "digest_response",
+      "input": {
+        "hash": "Md5",
+        "session": false,
+        "username": "Mufasa",
+        "password": "Circle Of Life",
+        "realm": "testrealm@host.com",
+        "nonce": "dcd98b7102dd2f0e8b11d0f600bfb0c093",
+        "cnonce": "0a4f113b",
+        "nc": "00000001",
+        "qop": null,
+        "method": "GET",
+        "uri": "/dir/index.html"
+      },
+      "expected": { "response": "670fd8c2df070c60b045671b8b24ff02" },
+      "notes": "Without qop the response collapses to the RFC 2069 form: MD5(HA1:nonce:HA2), dropping nc/cnonce/qop from the hash."
+    },
+    {
+      "id": "auth-params-quoted-commas",
+      "unit": "parse_auth_params",
+      "input": { "raw": "realm=\"test@host.com\", qop=\"auth,auth-int\", nonce=\"abc123\", algorithm=MD5" },
+      "expected": {
+        "realm": "test@host.com",
+        "qop": "auth,auth-int",
+        "nonce": "abc123",
+        "algorithm": "MD5"
+      },
+      "notes": "Proves the parser is not a naive split(','): the quoted qop value contains a literal comma that must not be treated as a field separator."
+    },
+    {
+      "id": "canonical-query-sort-and-encode",
+      "unit": "canonical_query",
+      "input": { "url": "https://example.com/x?b=2&a=1&c=hello world&a=0" },
+      "expected": { "canonical_query": "a=0&a=1&b=2&c=hello%20world" },
+      "notes": "Repeated keys are not merged, only reordered by the (key,value) tuple sort; space becomes %20."
+    },
+    {
+      "id": "cookie-defaults-host-and-root-path",
+      "unit": "parse_set_cookie",
+      "input": {
+        "url": "https://api.example.com/v1/login",
+        "raw_set_cookie": "sid=abc123; HttpOnly; Secure"
+      },
+      "expected": {
+        "name": "sid",
+        "value": "abc123",
+        "domain": "api.example.com",
+        "path": "/",
+        "secure": true,
+        "http_only": true,
+        "expires": null
+      },
+      "notes": "No Domain/Path attributes: domain defaults to the request host, path defaults to a hardcoded '/' rather than RFC 6265's default-path algorithm (BUG-API-c in 08-api-client.md)."
+    },
+    {
+      "id": "cookie-domain-path-expiry",
+      "unit": "parse_set_cookie",
+      "input": {
+        "url": "https://api.example.com/v1/login",
+        "raw_set_cookie": "sid=abc; Domain=.example.com; Path=/app; Expires=Wed, 21 Oct 2015 07:28:00 GMT"
+      },
+      "expected": {
+        "domain": "example.com",
+        "path": "/app",
+        "expires": "2015-10-21T07:28:00+00:00"
+      },
+      "notes": "The leading dot on Domain is stripped (pre-RFC6265 spelling); Expires is parsed via the RFC 1123 format and rendered as RFC 3339."
+    },
+    {
+      "id": "decode-invalid-byte-still-text",
+      "unit": "decode_body",
+      "input": {
+        "bytes_utf8_prefix": "<!doctype html><title>hi</title>",
+        "extra_trailing_byte_hex": "FF",
+        "content_type": "text/html; charset=utf-8"
+      },
+      "expected": {
+        "body_text_starts_with": "<!doctype html>",
+        "body_text_ends_with": "�",
+        "body_base64": null
+      },
+      "notes": "The google.com case: declared HTML, mostly readable, one byte that isn't valid UTF-8. Lossy UTF-8 decode replaces only the bad byte."
+    },
+    {
+      "id": "decode-binary-to-base64",
+      "unit": "decode_body",
+      "input": {
+        "bytes_hex": "89504E470001",
+        "cases": [
+          { "content_type": "image/png", "reason": "declared binary media type" },
+          { "content_type": null, "reason": "no declared type, but a NUL byte in the first 4096 bytes (looks_binary)" }
+        ]
+      },
+      "expected": {
+        "body_text": "",
+        "body_base64": "iVBORwAB"
+      },
+      "notes": "Both the declared-binary-type case and the undeclared-but-NUL-containing case produce the same empty text / present base64 result."
+    },
+    {
+      "id": "decode-undeclared-text-and-vendor-json",
+      "unit": "decode_body / is_textual_type",
+      "input": {
+        "decode_body": { "bytes_utf8": "plain body", "content_type": null },
+        "is_textual_type_checks": [
+          "application/vnd.github+json",
+          "application/problem+json; charset=utf-8",
+          "application/octet-stream"
+        ]
+      },
+      "expected": {
+        "decode_body": { "body_text": "plain body", "body_base64": null },
+        "is_textual_type_results": {
+          "application/vnd.github+json": true,
+          "application/problem+json; charset=utf-8": true,
+          "application/octet-stream": false
+        }
+      },
+      "notes": "Vendor +json types count as text by suffix match, not by an exhaustive list; undeclared text with no NUL byte reads as text."
+    },
+    {
+      "id": "decode-latin1-transcode",
+      "unit": "decode_body",
+      "input": {
+        "bytes_hex": "61F16F",
+        "content_type": "text/plain; charset=iso-8859-1"
+      },
+      "expected": { "body_text": "año", "body_base64": null },
+      "notes": "0xF1 is 'ñ' (U+00F1) in Latin-1 and invalid on its own in UTF-8; the declared charset is transcoded byte-for-byte (byte value -> same Unicode code point), not replaced with U+FFFD."
+    }
+  ]
+}

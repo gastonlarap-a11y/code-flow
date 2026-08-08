@@ -1,0 +1,2 @@
+## NIVEL DE REVISIÓN ACTIVO: ultra
+Exhaustive review. Apply all six lenses, maintainability included. Report findings with confidence ≥ 50 AND include `Info`/nitpicks. The `CODE AROUND THE CHANGES` section already quotes the whole declaration each change sits in — read it there instead of opening the file, and open a file only to follow a symbol that is quoted nowhere in it. Prefer precision over brevity.

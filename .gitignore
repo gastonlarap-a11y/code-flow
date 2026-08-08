@@ -1,0 +1,89 @@
+# .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userprefs
+.vs/
+.idea/
+*.received.*
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Node. These are anchored to the two package roots: an unanchored `release/` also matched
+# `.claude/skills/release/`, which silently kept the release skill out of git.
+node_modules/
+dist/
+dist-electron/
+out/
+/renderer/release/
+/shell/release/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# Velopack
+Releases/
+publish/
+
+# Packaging output: the installers themselves, and the directory scripts/build-app.sh stages the
+# sidecar and the renderer into before electron-builder copies them.
+dist-installers/
+shell/build/
+
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+# Data files only. A bare `secrets*` also matches source: git is case-insensitive on macOS and
+# Windows, and `SecretScan.cs` lowercases to `secretscan.cs`, which starts with `secrets` — so the
+# scanner's own implementation was silently unstageable.
+secrets
+secrets.*
+secrets/
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Local scratch
+*.local
+
+# Agent config that stays on one machine. `*.local` above does NOT cover CLAUDE.local.md —
+# that pattern matches names ending in `.local`, and this one ends in `.md`.
+CLAUDE.local.md
+.claude/settings.local.json
+
+# The agent harness seeds a `.claude/.cc-writes/` scratch directory in whatever directory it is
+# working in — there are two dozen of them across the tree, one even inside `bin/Debug/`. Git does
+# not track empty directories, so today they are invisible; the day a file lands in one it would be
+# committed. Unanchored on purpose: they appear at every depth.
+.claude/.cc-writes/
+
+# The unanchored `[Rr]elease/` build-output pattern above matches at any depth, including
+# `.claude/skills/release/` — which silently kept the release skill out of git. Committed config
+# wins over the build-artifact pattern.
+!.claude/skills/release/
+!.claude/skills/release/**
+
+# pnpm local store
+.pnpm-store/

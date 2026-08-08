@@ -1,0 +1,61 @@
+# F3.5: Directory.Build.props has declared EnforceCodeStyleInBuild since the beginning, but
+# without an .editorconfig every IDExxxx rule sits at `silent` and the property enforces nothing.
+# This file gives it teeth. Severity policy: `warning` (fatal, via TreatWarningsAsErrors) only for
+# conventions the codebase already follows uniformly — verified by grep and a clean Release build —
+# so the build guards the style that exists instead of demanding a rewrite. Mixed-usage
+# preferences (var, expression bodies) stay at `suggestion`: visible in the IDE, never fatal.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Renderer/shell TypeScript, configs and docs all use two-space indentation already.
+[*.{ts,tsx,js,mjs,cjs,json,yml,yaml,html,css,md}]
+indent_style = space
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 2
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# --- Enforced: the codebase is already 100% clean on these (fatal via warnings-as-errors) -------
+
+# File-scoped namespaces — every non-generated file uses them (246/246).
+csharp_style_namespace_declarations = file_scoped:warning
+
+# `using System.*` first, matching every registration and handler file.
+dotnet_sort_system_directives_first = true
+
+# `is null` over ReferenceEquals-with-null; the two ReferenceEquals calls in the app are identity
+# comparisons, which IDE0041 does not flag.
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+
+# Formatting (IDE0055 covers using-order and whitespace) — fatal, since the code is already clean.
+dotnet_diagnostic.IDE0055.severity = warning
+
+# --- Preferences the code follows predominantly but not uniformly: IDE-visible, never fatal -----
+
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_var_for_built_in_types = true:suggestion
+
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_lambdas = true:suggestion
+
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_prefer_conditional_expression_over_return = true:suggestion

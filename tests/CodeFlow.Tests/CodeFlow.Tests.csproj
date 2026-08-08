@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Kept physically separate from the app so xUnit never enters the publish graph — this codebase
+    ships self-contained binaries and a signed bundle, and test-only assemblies have no business
+    in either. Folders mirror the app's feature folders 1:1, so finding a feature's tests is the
+    same path under a different root.
+
+    [Theory] data comes from docs/business-rules/test-vectors/, written during The extraction pass by mining
+    133 extracted cases. Materialising them here is near-mechanical by design.
+  -->
+  <PropertyGroup>
+    <RootNamespace>CodeFlow.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+
+    <!--
+      CA1707 forbids underscores in member names. Test methods are the one place where they are
+      the convention rather than a smell: `Scenario_fixtures_carry_their_seed_artefact` is what a
+      failing test prints, and it should read as a sentence. Scoped to this project only —
+      warnings stay errors everywhere else, including in the app.
+    -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/CodeFlow.App/CodeFlow.App.csproj" />
+  </ItemGroup>
+
+</Project>

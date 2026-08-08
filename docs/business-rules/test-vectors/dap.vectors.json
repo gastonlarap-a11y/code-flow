@@ -1,0 +1,81 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Diagnostics/Dap.cs",
+  "sourceLines": "433-477",
+  "extractedFrom": [
+    "messages_are_framed_with_their_byte_length",
+    "reads_back_a_framed_message",
+    "reads_consecutive_messages_without_losing_the_second",
+    "frames_and_variables_map_onto_the_shared_shapes"
+  ],
+  "kind": "vector",
+  "unit": "DAP wire framing and payload-shape mapping: frame, read_message, parse_frame, parse_variable",
+  "cases": [
+    {
+      "id": "frame-ascii-payload",
+      "unit": "frame",
+      "input": { "payload": "{\"a\":1}" },
+      "expected": { "framed": "Content-Length: 7\r\n\r\n{\"a\":1}" },
+      "notes": "Content-Length counts bytes of the payload, not characters; for pure ASCII the two coincide."
+    },
+    {
+      "id": "frame-utf8-payload-counts-bytes-not-characters",
+      "unit": "frame",
+      "input": { "payload": "{\"a\":\"\u00f1\"}" },
+      "expected": { "framed": "Content-Length: 10\r\n\r\n{\"a\":\"\u00f1\"}" },
+      "notes": "The payload is 9 characters but 10 bytes: 'ñ' is a 2-byte UTF-8 sequence. A header that counted characters instead of bytes would desynchronize the stream the first time a non-ASCII value appears. This is the byte length the original test asserts, verbatim."
+    },
+    {
+      "id": "read-message-single-event",
+      "unit": "read_message",
+      "input": { "stream": "Content-Length: 38\r\n\r\n{\"type\":\"event\",\"event\":\"initialized\"}" },
+      "expected": { "message": { "type": "event", "event": "initialized" } },
+      "notes": "Header is read one byte at a time until the literal 4-byte sequence \\r\\n\\r\\n is seen at the tail of the accumulated header buffer; the Content-Length value (38) is then used to read exactly that many body bytes and parse them as JSON."
+    },
+    {
+      "id": "read-message-two-consecutive-messages-then-eof",
+      "unit": "read_message",
+      "input": { "stream": "Content-Length: 9\r\n\r\n{\"seq\":1}Content-Length: 9\r\n\r\n{\"seq\":2}" },
+      "expected": {
+        "reads": [
+          { "seq": 1 },
+          { "seq": 2 },
+          null
+        ]
+      },
+      "notes": "Two frames placed back-to-back with nothing but their own headers separating them. A reader that buffers past the first message's declared body length would swallow the start of the second message's header. Three sequential calls: first two decode the two objects in order, the third (stream exhausted) returns None — the read_message contract for a closed/ended stream."
+    },
+    {
+      "id": "parse-frame-windows-path",
+      "unit": "parse_frame",
+      "input": {
+        "id": 7,
+        "name": "compute",
+        "line": 12,
+        "source": { "path": "C:\\repo\\app.py" }
+      },
+      "expected": {
+        "id": "7",
+        "name": "compute",
+        "file": "C:\\repo\\app.py",
+        "line": 12,
+        "scope_id": null
+      },
+      "notes": "id is produced by Value::to_string() on the JSON 'id' field, not a dedicated string extractor — for the number DAP always sends this renders as plain digits ('7'), but would come out wrapped in escaped quotes for a non-conformant adapter that sent a JSON string id instead. line is used exactly as received: the client declared linesStartAt1=true at initialize, so no adjustment happens here. scope_id is always null out of parse_frame itself — it is filled in afterwards by collect_stack once the frame's scopes have been requested."
+    },
+    {
+      "id": "parse-variable-expandable",
+      "unit": "parse_variable",
+      "input": { "name": "items", "value": "list", "variablesReference": 3 },
+      "expected": { "name": "items", "value": "list", "object_id": "3" },
+      "notes": "A non-zero variablesReference is DAP's 'this value is expandable' signal; it is stringified into the app's opaque object_id."
+    },
+    {
+      "id": "parse-variable-not-expandable",
+      "unit": "parse_variable",
+      "input": { "name": "n", "value": "42", "variablesReference": 0 },
+      "expected": { "name": "n", "value": "42", "object_id": null },
+      "notes": "0 is DAP's dedicated 'nothing to expand' sentinel, mapped to object_id: None rather than the string \"0\"."
+    }
+  ]
+}

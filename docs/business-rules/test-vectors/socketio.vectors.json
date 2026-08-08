@@ -1,0 +1,195 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/ApiClient/SocketIoFraming.cs",
+  "sourceLines": "372-732",
+  "extractedFrom": [
+    "root_namespace_has_no_namespace_segment",
+    "named_namespace_is_comma_terminated",
+    "connect_carries_auth_only_on_v4_and_only_when_it_says_something",
+    "event_with_one_argument_keeps_that_argument_shape",
+    "event_with_several_arguments_becomes_an_array",
+    "event_with_a_bare_string_payload_stays_json",
+    "event_with_no_payload_sends_only_the_name",
+    "event_payload_must_be_json",
+    "engine_opcodes_map_to_their_packets",
+    "ack_and_binary_packets_keep_their_metadata",
+    "namespace_without_payload_is_still_a_namespace",
+    "handshake_url_upgrades_the_scheme_and_keeps_existing_query"
+  ],
+  "kind": "vector",
+  "unit": "the Engine.IO / Socket.IO framing functions in the Socket.IO framing — see each case's own \"unit\" field",
+  "cases": [
+    {
+      "id": "frame-root-namespace-no-segment",
+      "unit": "message_frame",
+      "input": {
+        "calls": [
+          { "kind": "CONNECT", "namespace": "/", "body": "" },
+          { "kind": "CONNECT", "namespace": "", "body": "" },
+          { "kind": "EVENT", "namespace": "/", "body": "[\"ping\"]" }
+        ]
+      },
+      "expected": {
+        "results": ["40", "40", "42[\"ping\"]"]
+      },
+      "notes": "The root namespace (empty or '/') never emits a namespace segment — never '40/,' or similar."
+    },
+    {
+      "id": "frame-named-namespace-comma-terminated",
+      "unit": "message_frame",
+      "input": {
+        "calls": [
+          { "kind": "CONNECT", "namespace": "/chat", "body": "" },
+          { "kind": "DISCONNECT", "namespace": "/chat", "body": "" },
+          { "kind": "EVENT", "namespace": "chat", "body": "[\"ping\"]" }
+        ]
+      },
+      "expected": {
+        "results": ["40/chat,", "41/chat,", "42/chat,[\"ping\"]"]
+      },
+      "notes": "A namespace missing its leading '/' (\"chat\") is auto-prefixed; a named namespace is always comma-terminated."
+    },
+    {
+      "id": "connect-auth-only-on-v4-and-non-empty",
+      "unit": "message_frame(CONNECT, namespace, connect_body(auth_json, v4))",
+      "input": {
+        "auth_json": "{\"token\":\"abc\"}",
+        "calls": [
+          { "namespace": "/", "v4": true, "auth_json": "{\"token\":\"abc\"}" },
+          { "namespace": "/chat", "v4": true, "auth_json": "{\"token\":\"abc\"}" },
+          { "namespace": "/", "v4": false, "auth_json": "{\"token\":\"abc\"}" },
+          { "namespace": "/", "v4": true, "auth_json": "{}" },
+          { "namespace": "/", "v4": true, "auth_json": "" }
+        ]
+      },
+      "expected": {
+        "results": [
+          "40{\"token\":\"abc\"}",
+          "40/chat,{\"token\":\"abc\"}",
+          "40",
+          "40",
+          "40"
+        ]
+      },
+      "notes": "v3 (Socket.IO 2, v4=false) never sends an auth payload; an empty object or blank auth_json produces an empty CONNECT body even on v4."
+    },
+    {
+      "id": "event-one-argument-keeps-shape",
+      "unit": "event_args(event, payload_json); decode_packet + split_event round trip",
+      "input": {
+        "event": "message",
+        "payload_json": "{\"a\":1}"
+      },
+      "expected": {
+        "frame": "42[\"message\",{\"a\":1}]",
+        "decoded_packet": { "kind": "EVENT", "namespace": "/" },
+        "split_event": ["message", "{\"a\":1}"]
+      },
+      "notes": "A single argument keeps its own JSON shape (object stays an object)."
+    },
+    {
+      "id": "event-several-arguments-become-array",
+      "unit": "decode_packet(body); split_event(packet.data)",
+      "input": { "raw_packet_body": "2/chat,[\"joined\",\"ana\",42]" },
+      "expected": {
+        "namespace": "/chat",
+        "split_event": ["joined", "[\"ana\",42]"]
+      },
+      "notes": "More than one remaining argument collapses into a JSON array as the payload."
+    },
+    {
+      "id": "event-bare-string-payload-stays-json",
+      "unit": "event_args / split_event",
+      "input": {
+        "event_args_call": { "event": "message", "payload_json": "\"hello\"" },
+        "split_event_call": "[\"message\",\"hello\"]"
+      },
+      "expected": {
+        "event_args_result": "[\"message\",\"hello\"]",
+        "split_event_result": ["message", "\"hello\""]
+      },
+      "notes": "The payload stays JSON-quoted (\"hello\", a JSON string) rather than being unwrapped to a bare string."
+    },
+    {
+      "id": "event-no-payload-sends-only-name",
+      "unit": "event_args / split_event",
+      "input": {
+        "event_args_call": { "event": "tick", "payload_json": "  " },
+        "split_event_call": "[\"tick\"]"
+      },
+      "expected": {
+        "event_args_result": "[\"tick\"]",
+        "split_event_result": ["tick", ""]
+      },
+      "notes": "Whitespace-only payload is treated as no payload at all."
+    },
+    {
+      "id": "event-payload-must-be-json",
+      "unit": "event_args(event, payload_json)",
+      "input": { "event": "message", "payload_json": "{not json}" },
+      "expected": { "error": true },
+      "notes": "A non-JSON payload is rejected before anything is sent."
+    },
+    {
+      "id": "engine-opcodes",
+      "unit": "decode_engine; engine_frame(kind: char)",
+      "input": {
+        "decode_calls": ["2", "3", "1", "0{\"sid\":\"a\"}", "42[\"a\"]", ""],
+        "engine_frame_call": "PONG"
+      },
+      "expected": {
+        "decode_results": [
+          { "Ping": "" },
+          { "Pong": "" },
+          "Close",
+          { "Open": "{\"sid\":\"a\"}" },
+          { "Message": "2[\"a\"]" },
+          null
+        ],
+        "engine_frame_result": "3"
+      },
+      "notes": "Engine.IO opcodes: 0 OPEN, 1 CLOSE, 2 PING, 3 PONG, 4 MESSAGE (body is a nested Socket.IO packet). Empty input decodes to nothing."
+    },
+    {
+      "id": "ack-and-binary-metadata",
+      "unit": "decode_packet",
+      "input": {
+        "ack_packet": "312[\"ok\"]",
+        "binary_packet": "52-/chat,7[\"file\",{\"_placeholder\":true}]"
+      },
+      "expected": {
+        "ack": { "kind": "ACK", "ack_id": 12, "data": "[\"ok\"]" },
+        "binary": { "kind": "BINARY_EVENT", "attachments": 2, "namespace": "/chat", "ack_id": 7 }
+      },
+      "notes": "ACK=3, BINARY_EVENT=5. The '2-' prefix on the binary packet is the attachment count, recognised only because every character before the dash is an ASCII digit."
+    },
+    {
+      "id": "namespace-without-payload",
+      "unit": "decode_packet",
+      "input": { "raw_packet_body": "0/chat" },
+      "expected": { "kind": "CONNECT", "namespace": "/chat", "data": "" },
+      "notes": "A namespace segment with no trailing comma+payload is still recognised as a namespace, with empty data."
+    },
+    {
+      "id": "handshake-url-scheme-upgrade-and-query",
+      "unit": "handshake_url",
+      "input": {
+        "calls": [
+          { "url": "https://example.com/ignored", "path": "/socket.io", "eio": 4, "query": [] },
+          { "url": "http://localhost:3000?a=1", "path": "socket.io/", "eio": 3, "query": [] },
+          { "url": "ws://localhost:3000", "path": "", "eio": 4, "query": [["token", "a b"]] },
+          { "url": "ftp://example.com", "path": "/socket.io", "eio": 4, "query": [] }
+        ]
+      },
+      "expected": {
+        "results": [
+          "wss://example.com/socket.io/?EIO=4&transport=websocket",
+          "ws://localhost:3000/socket.io/?a=1&EIO=3&transport=websocket",
+          "ws://localhost:3000/socket.io/?EIO=4&transport=websocket&token=a+b",
+          { "error": true }
+        ]
+      },
+      "notes": "The original URL's path is always replaced by the (defaulted, forced-absolute) Engine.IO mount path; https/http upgrade to wss/ws; an unsupported scheme (ftp) errors. Only transport=websocket is ever requested."
+    }
+  ]
+}

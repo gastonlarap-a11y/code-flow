@@ -1,0 +1,111 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Storage/Migrations.cs",
+  "sourceLines": "678-814",
+  "extractedFrom": [
+    "migrating_a_pre_workspace_database_keeps_every_row_and_reparents_it",
+    "migration_is_idempotent_and_a_fresh_database_needs_no_migration",
+    "a_database_with_no_workspace_keeps_the_legacy_rows"
+  ],
+  "kind": "scenario",
+  "unit": "run(&Connection)",
+  "cases": [
+    {
+      "id": "reparents-legacy-rows-to-oldest-workspace",
+      "setup": {
+        "seedSql": "sql/migrations-legacy-pre-workspace.sql"
+      },
+      "steps": [
+        "run the full migration procedure (migrations::run) once against the seeded database"
+      ],
+      "expected": {
+        "rowCounts": {
+          "api_collections": 1,
+          "api_folders": 1,
+          "api_requests": 1,
+          "api_history": 1,
+          "api_cookies": 1
+        },
+        "apiCollectionsWorkspaceId": {
+          "c1": "w-old"
+        },
+        "apiHistoryWorkspaceId": {
+          "h1": "w-old"
+        },
+        "apiCookiesWorkspaceId": {
+          "k1": "w-old"
+        },
+        "apiEnvironmentWorkspaceId": {
+          "e1": "w-old"
+        },
+        "globalEnvironments": {
+          "totalWithIsGlobal1": 2,
+          "distinctWorkspaceIds": 2,
+          "note": "The legacy e-glob row (unscoped) is dropped, not carried over; ensure_globals_environment seeds a fresh Globals row per workspace instead."
+        },
+        "legacyTablesDropped": [
+          "api_collections_legacy",
+          "api_environments_legacy",
+          "api_history_legacy",
+          "api_cookies_legacy"
+        ],
+        "api_foldersCreateSql_contains": "REFERENCES api_collections(id)",
+        "api_foldersCreateSql_excludes": "legacy",
+        "cascadeCheck": {
+          "action": "PRAGMA foreign_keys = ON; DELETE FROM workspaces WHERE id = 'w-old';",
+          "then": {
+            "api_collections": 0,
+            "api_requests": 0,
+            "api_cookies": 0
+          }
+        }
+      },
+      "notes": "Verifies migrate_api_tables_begin/finish: the four api_* roots gain workspace_id, existing rows are reassigned to the oldest workspace (by sort_order, then created_at), the legacy Globals row is discarded in favour of one fresh Globals per workspace, and the api_folders CREATE TABLE sql still references api_collections directly (not api_collections_legacy) — proof PRAGMA legacy_alter_table protected the child foreign keys during the rename."
+    },
+    {
+      "id": "migration-is-idempotent-on-a-legacy-database",
+      "setup": {
+        "seedSql": "sql/migrations-legacy-pre-workspace.sql"
+      },
+      "steps": [
+        "run the full migration procedure (migrations::run) once against the seeded database",
+        "run the full migration procedure again against the same, now-migrated connection",
+        "separately, run the full migration procedure once against a brand-new empty database"
+      ],
+      "expected": {
+        "afterTwoRuns": {
+          "api_collections": 1,
+          "globalEnvironmentsWithIsGlobal1": 2
+        },
+        "freshDatabase": {
+          "api_collectionsHasWorkspaceIdColumn": true
+        }
+      },
+      "notes": "The second run of migrate_api_tables_begin is a no-op because table_exists(api_collections) && !has_column(api_collections, workspace_id) is now false (the column exists) — no re-rename, no duplicate copy. Every later step-migration function (add_*_to_*) is independently idempotent via its own has_column guard. A fresh database needs no legacy-rename path at all: migrate_api_tables_begin's needs_migration check is false because api_collections does not exist yet, so the schema batch alone creates it in its current (already workspace_id) shape."
+    },
+    {
+      "id": "no-workspace-keeps-legacy-rows-until-one-exists",
+      "setup": {
+        "seedSql": "sql/migrations-legacy-no-workspace.sql"
+      },
+      "steps": [
+        "run the full migration procedure (migrations::run) against the seeded database (no workspaces row exists)",
+        "assert the legacy table and its one row are still present",
+        "insert one workspace row ('w1')",
+        "run the full migration procedure again",
+        "assert the row is now migrated and the legacy table is gone"
+      ],
+      "expected": {
+        "afterFirstRun": {
+          "api_collections_legacyExists": true,
+          "api_collections_legacyRowCount": 1
+        },
+        "afterWorkspaceInsertedAndSecondRun": {
+          "api_collectionsWhereWorkspaceIdEqW1": 1,
+          "api_collections_legacyExists": false
+        }
+      },
+      "notes": "migrate_api_tables_finish returns early, leaving the *_legacy tables untouched, when no workspace row exists to assign the rows to — deleting a user's collections to tidy up a migration is treated as worse than leaving a legacy table behind. On the first run, migrate_api_tables_begin renames api_collections (and the other three roots) to *_legacy and the schema batch recreates empty replacements that already have workspace_id; migrate_api_tables_finish then finds no workspace and stops, so the *_legacy tables and their rows survive untouched between runs. On the second run (after a workspace now exists), migrate_api_tables_begin is itself a no-op — the live api_collections already has workspace_id, so its needs_migration guard is false and nothing is re-renamed — while migrate_api_tables_finish now finds a workspace, copies every *_legacy row across with that workspace's id, and drops the four *_legacy tables. It is migrate_api_tables_finish, not migrate_api_tables_begin, whose behaviour changes between the two runs."
+    }
+  ]
+}

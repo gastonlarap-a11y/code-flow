@@ -1,0 +1,155 @@
+[
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/Engines/OpenAi.cs",
+    "sourceLines": "97-102",
+    "extractedFrom": [
+      "pulls_the_message_out_of_an_openai_error_body",
+      "falls_back_to_the_raw_body_when_it_is_not_openai_shaped"
+    ],
+    "kind": "vector",
+    "unit": "error_detail",
+    "cases": [
+      {
+        "id": "pulls-the-message-out-of-an-openai-error-body",
+        "input": {
+          "body": "{\"error\":{\"message\":\"You exceeded your current quota\",\"type\":\"insufficient_quota\"}}"
+        },
+        "expected": {
+          "result": "You exceeded your current quota"
+        }
+      },
+      {
+        "id": "falls-back-to-the-raw-body-when-not-openai-shaped",
+        "input": {
+          "body": "  Bad Gateway  "
+        },
+        "expected": {
+          "result": "Bad Gateway"
+        }
+      }
+    ]
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/Engines/OpenAi.cs",
+    "sourceLines": "182-203",
+    "extractedFrom": [
+      "keeps_chat_models_including_ones_that_do_not_exist_yet",
+      "drops_models_that_cannot_run_a_chat_completion"
+    ],
+    "kind": "vector",
+    "unit": "is_chat_model",
+    "cases": [
+      {
+        "id": "gpt-5-is-a-chat-model",
+        "input": {
+          "id": "gpt-5"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "gpt-5-6-sol-is-a-chat-model",
+        "input": {
+          "id": "gpt-5.6-sol"
+        },
+        "expected": {
+          "result": true
+        },
+        "notes": "Unreleased-looking ids are kept by design — the filter excludes known non-chat families instead of allow-listing chat ones."
+      },
+      {
+        "id": "o3-is-a-chat-model",
+        "input": {
+          "id": "o3"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "chatgpt-4o-latest-is-a-chat-model",
+        "input": {
+          "id": "chatgpt-4o-latest"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "deepseek-chat-is-a-chat-model",
+        "input": {
+          "id": "deepseek-chat"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "text-embedding-3-large-is-not-a-chat-model",
+        "input": {
+          "id": "text-embedding-3-large"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "dall-e-3-is-not-a-chat-model",
+        "input": {
+          "id": "dall-e-3"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "whisper-1-is-not-a-chat-model",
+        "input": {
+          "id": "whisper-1"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "tts-1-hd-is-not-a-chat-model",
+        "input": {
+          "id": "tts-1-hd"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "omni-moderation-latest-is-not-a-chat-model",
+        "input": {
+          "id": "omni-moderation-latest"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "gpt-4o-realtime-preview-is-not-a-chat-model",
+        "input": {
+          "id": "gpt-4o-realtime-preview"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "gpt-4o-audio-preview-is-not-a-chat-model",
+        "input": {
+          "id": "gpt-4o-audio-preview"
+        },
+        "expected": {
+          "result": false
+        }
+      }
+    ]
+  }
+]

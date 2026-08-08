@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    The tray's own cut of the mark, not a scaled copy of `icon.svg`.
+    Two bars instead of three and a single spark, both fatter: at 32px — the only size this is ever
+    seen at — the third bar and the small spark collapse into noise. The field is kept because a
+    tray icon sits on a menu bar of unknown colour, where an unbacked white bar disappears.
+  -->
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="992" height="992" rx="230" fill="url(#field)"/>
+
+  <rect x="176" y="376" width="440" height="104" rx="52" fill="#4ade80"/>
+  <rect x="176" y="560" width="300" height="104" rx="52" fill="#f87171"/>
+
+  <path transform="translate(760 372) scale(196)" fill="#22d3ee"
+        d="M0,-1 Q0.14,-0.14 1,0 Q0.14,0.14 0,1 Q-0.14,0.14 -1,0 Q-0.14,-0.14 0,-1 Z"/>
+</svg>

@@ -1,0 +1,81 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Providers/PrLink.cs",
+  "sourceLines": "149-216",
+  "extractedFrom": [
+    "parses_github_links",
+    "parses_azure_links",
+    "rejects_non_pr_links"
+  ],
+  "kind": "vector",
+  "unit": "parse",
+  "notes": "known_github_hosts is fixed across every case in this file at [\"github.com\", \"ghe.contoso.com\"], matching the original test's hosts() helper. PrLinkTarget is a two-variant enum (GitHub{host,owner,repo,number} | Azure{org,project,repo,number}); expected.type names the variant and expected's other fields are its payload. expected: null means parse(...) returns None.",
+  "cases": [
+    {
+      "id": "github-basic",
+      "input": { "url": "https://github.com/acme/widget/pull/42", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "GitHub", "host": "github.com", "owner": "acme", "repo": "widget", "number": 42 },
+      "notes": "Plain GitHub.com PR link, no trailing tab/query/fragment."
+    },
+    {
+      "id": "github-deep-link-with-tab-query-fragment",
+      "input": { "url": "https://github.com/acme/widget/pull/42/files?w=1#diff-abc", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "GitHub", "host": "github.com", "owner": "acme", "repo": "widget", "number": 42 },
+      "notes": "Same PR as github-basic: the /files tab, ?w=1 query and #diff-abc fragment are all discarded by split() before parsing. Proves the trailing path segments after {number} (kind, number, ..) are ignored."
+    },
+    {
+      "id": "github-enterprise-connected-host",
+      "input": { "url": "https://ghe.contoso.com/team/app/pull/7", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "GitHub", "host": "ghe.contoso.com", "owner": "team", "repo": "app", "number": 7 },
+      "notes": "Enterprise host recognized only because it is present in knownGithubHosts. The original test only asserts number==7 via a matches! guard; the full expected shape here is derived directly from parse_github's construction (host is the matched knownGithubHosts entry, not a re-derived string), not an independent assertion in the source test."
+    },
+    {
+      "id": "github-enterprise-unknown-host-rejected",
+      "input": { "url": "https://ghe.unknown.com/team/app/pull/7", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": null,
+      "notes": "Same path shape as github-enterprise-connected-host, but the host is not in knownGithubHosts, so it is indistinguishable from an arbitrary self-hosted git server and parse returns None."
+    },
+    {
+      "id": "azure-full-org-project-repo-with-encoded-space",
+      "input": { "url": "https://dev.azure.com/contoso/Marketing%20Website/_git/site/pullrequest/9", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "Azure", "org": "contoso", "project": "Marketing Website", "repo": "site", "number": 9 },
+      "notes": "dev.azure.com host; project segment is percent-decoded (%20 -> space) by percent_decode before matching."
+    },
+    {
+      "id": "azure-legacy-visualstudio-host-with-defaultcollection-and-query",
+      "input": { "url": "https://contoso.visualstudio.com/DefaultCollection/Web/_git/api/pullrequest/3?_a=files", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "Azure", "org": "contoso", "project": "Web", "repo": "api", "number": 3 },
+      "notes": "Legacy *.visualstudio.com host: org is the subdomain with the suffix stripped. The optional DefaultCollection path segment (matched case-insensitively) is dropped before looking for {project}/_git/{repo}/pullrequest/{n}. The ?_a=files query is discarded by split()."
+    },
+    {
+      "id": "azure-project-segment-omitted-defaults-to-repo-name",
+      "input": { "url": "https://dev.azure.com/contoso/_git/api/pullrequest/11", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": { "type": "Azure", "org": "contoso", "project": "api", "repo": "api", "number": 11 },
+      "notes": "Azure's portal omits the project segment in the URL when the project name matches the repository name; parse_azure's second match arm ([git, repo, pr, number, ..]) fills project with the same value as repo in that case."
+    },
+    {
+      "id": "reject-repo-root-not-a-pr",
+      "input": { "url": "https://github.com/acme/widget", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": null,
+      "notes": "Only two path segments; parse_github's [owner, repo, kind, number, ..] destructure has nothing to bind kind/number to."
+    },
+    {
+      "id": "reject-github-issue-link",
+      "input": { "url": "https://github.com/acme/widget/issues/42", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": null,
+      "notes": "kind == \"issues\", which fails the kind.eq_ignore_ascii_case(\"pull\") / \"pulls\" check."
+    },
+    {
+      "id": "reject-azure-repo-link-no-pr-segment",
+      "input": { "url": "https://dev.azure.com/contoso/Web/_git/api", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": null,
+      "notes": "A plain repo browse link (project/_git/repo, no /pullrequest/{n} tail) matches neither parse_azure match arm."
+    },
+    {
+      "id": "reject-not-a-url",
+      "input": { "url": "not a url", "knownGithubHosts": ["github.com", "ghe.contoso.com"] },
+      "expected": null,
+      "notes": "split() requires a '/' separating host from path (via split_once('/')); a string with none returns None before either provider parser runs."
+    }
+  ]
+}

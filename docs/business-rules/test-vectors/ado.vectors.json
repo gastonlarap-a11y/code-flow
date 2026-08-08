@@ -1,0 +1,41 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Providers/Azure/UnifiedPatch.cs",
+  "sourceLines": "461-469,959-976",
+  "extractedFrom": [
+    "unified_patch_renders_a_git_style_diff",
+    "unified_patch_handles_added_and_deleted_files"
+  ],
+  "kind": "vector",
+  "unit": "unified_patch",
+  "notes": "Pure function: libgit2(old, Some(path), new, Some(path), None), then patch.to_buf(). No network, no filesystem, no clone on disk — old/new are two in-memory blobs (e.g. from ado::get_blob). Because the original tests assert substring containment (patch.contains(...)) rather than exact equality, expected is expressed as a 'containsAll' list of substrings the rendered patch must include, not a byte-identical string. A Phase 3 [Theory] should assert the same containment, not exact equality, unless the .NET diff renderer is verified to be byte-identical to libgit2's output.",
+  "cases": [
+    {
+      "id": "unified-patch-modify-single-line",
+      "input": { "path": "src/app.ts", "old": "linea uno\nlinea dos\n", "new": "linea uno\nlinea DOS\n" },
+      "expected": {
+        "isSome": true,
+        "containsAll": ["a/src/app.ts", "b/src/app.ts", "@@", "-linea dos", "+linea DOS"]
+      },
+      "notes": "Both old and new are given as the same path on both sides (libgit2(old, Some(path), new, Some(path), None)) — unified_patch always renders a same-path modify, never a rename; the implementation has no rename-diff code path."
+    },
+    {
+      "id": "unified-patch-added-file",
+      "input": { "path": "nuevo.txt", "old": "", "new": "hola\n" },
+      "expected": {
+        "isSome": true,
+        "containsAll": ["+hola"]
+      },
+      "notes": "old is an empty byte slice, representing a file that does not exist on the base side."
+    },
+    {
+      "id": "unified-patch-deleted-file",
+      "input": { "path": "viejo.txt", "old": "adios\n", "new": "" },
+      "expected": {
+        "isSome": true,
+        "containsAll": ["-adios"]
+      },
+      "notes": "new is an empty byte slice, representing a file that does not exist on the target side (a delete's current)."
+    }
+  ]
+}

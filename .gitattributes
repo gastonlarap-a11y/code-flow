@@ -1,0 +1,32 @@
+# Line endings, and why this file has to exist.
+#
+# Git for Windows checks out with `core.autocrlf=true` by default, and so do GitHub's Windows
+# runners: every text file arrives with CRLF. That is harmless for a compiler and fatal here,
+# because this application compares literals for a living. `docs/business-rules/13-cross-language-
+# contracts.md` lists fourteen strings that are byte-level contracts — prompts, error prefixes,
+# keychain key formats, regex sources — and the prompt files under `Ai/Prompts/` are read as data at
+# runtime, not compiled. A stray `\r` at the end of a line makes
+# "## NIVEL DE REVISIÓN ACTIVO: básico\r" not equal "## NIVEL DE REVISIÓN ACTIVO: básico", which is
+# exactly how the first CI run on Windows failed.
+#
+# So the working tree is LF everywhere, on every platform. The two exceptions below are files
+# Windows itself parses, where CRLF is what the tool expects.
+
+* text=auto eol=lf
+
+# Windows' own script hosts. `cmd.exe` mis-parses a `.bat`/`.cmd` with LF endings — a label or a
+# multi-line block can silently run the wrong branch.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never touched: normalisation would corrupt them, and a diff of them is noise either way.
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.dmg binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.blockmap binary

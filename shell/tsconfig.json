@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+
+    // CommonJS on purpose: Electron's preload script has to be CJS unless the whole chain opts
+    // into ESM with matching extensions, and that friction buys nothing for ~600 lines of glue.
+    // NodeNext (the non-deprecated successor of `Node` resolution, required by TS 6) still emits
+    // CJS here because package.json has no `"type": "module"` — every file is in CJS scope.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": false,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,2 @@
+## NIVEL DE REVISIÓN ACTIVO: ultra
+Exhaustive review. Apply all six lenses, maintainability included. Report findings with confidence ≥ 50 AND include `Info`/nitpicks. This run has no checkout and no surrounding code: judge from the diff alone, and where a finding depends on code you cannot see, say so and lower its confidence rather than asserting it. Prefer precision over brevity.

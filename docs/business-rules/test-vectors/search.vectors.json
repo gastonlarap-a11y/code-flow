@@ -1,0 +1,203 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Files/Search.cs",
+  "sourceLines": "309-488",
+  "extractedFrom": [
+    "lists_source_files_and_skips_ignored_ones",
+    "finds_matches_case_insensitively_by_default",
+    "case_sensitive_search_respects_case",
+    "reports_truncation_instead_of_pretending_it_found_everything",
+    "whole_word_stops_matching_inside_longer_words",
+    "regex_mode_treats_the_query_as_a_pattern",
+    "an_unfinished_regex_reports_itself_instead_of_panicking",
+    "include_and_exclude_globs_narrow_the_scan",
+    "replace_rewrites_matches_and_leaves_an_undo_behind",
+    "replace_can_be_scoped_to_one_file_and_can_use_capture_groups"
+  ],
+  "kind": "scenario",
+  "unit": "{list_files, search, replace_all}(repo_path, ...)",
+  "cases": [
+    {
+      "id": "lists-and-prunes-gitignored",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": {
+            "src/app.ts": "const answer = 42;\nexport { answer };\n",
+            "src/util.ts": "// the ANSWER helper\n",
+            "node_modules/pkg/index.js": "const answer = 1;\n",
+            "debug.log": "answer\n",
+            ".gitignore": "node_modules/\n*.log\n"
+          }
+        }
+      },
+      "steps": ["list_files(repo)"],
+      "expected": {
+        "containsSrcAppTs": true,
+        "containsGitignore": true,
+        "anyPathStartsWithNodeModules": false,
+        "containsDebugLog": false
+      },
+      "notes": "Proves the ignored directory is pruned during the walk (never descended into), not filtered from a full listing afterward — see walk()'s is_path_ignored check on a trailing-slash-suffixed probe path, the implementation."
+    },
+    {
+      "id": "case-insensitive-default",
+      "setup": {
+        "tempRepoRef": "same fixture as lists-and-prunes-gitignored"
+      },
+      "steps": ["search(repo, \"answer\", SearchOptions::default(), 100)"],
+      "expected": {
+        "hitPaths": ["src/app.ts", "src/util.ts"],
+        "excludesDebugLog": true,
+        "srcAppTsLineNo": 1
+      },
+      "notes": "Default SearchOptions is case-insensitive (case_sensitive: false), matching 'answer' in 'const answer = 42;' (src/app.ts:1) and '// the ANSWER helper' (src/util.ts:1). debug.log is gitignored so it's never read."
+    },
+    {
+      "id": "case-sensitive-respects-case",
+      "setup": {
+        "tempRepoRef": "same fixture as lists-and-prunes-gitignored"
+      },
+      "steps": [
+        "search(repo, \"ANSWER\", SearchOptions { case_sensitive: true, ..Default::default() }, 100)"
+      ],
+      "expected": {
+        "hitPaths": ["src/util.ts"]
+      },
+      "notes": "With case_sensitive true, 'ANSWER' matches only the literal-uppercase occurrence in src/util.ts's comment; src/app.ts's lowercase 'answer' does not match."
+    },
+    {
+      "id": "truncation-flag",
+      "setup": {
+        "tempRepoRef": "same fixture as lists-and-prunes-gitignored"
+      },
+      "steps": ["search(repo, \"answer\", SearchOptions::default(), 1)"],
+      "expected": {
+        "hitsLen": 1,
+        "truncated": true
+      },
+      "notes": "max_results = 1 caps the result set below the true match count and sets truncated: true rather than silently returning a partial list with no signal."
+    },
+    {
+      "id": "whole-word-boundary",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": { "a.ts": "const set = 1;\nconst offset = 2;\n" }
+        }
+      },
+      "steps": [
+        "search(repo, \"set\", SearchOptions::default(), 50)",
+        "search(repo, \"set\", SearchOptions { whole_word: true, ..Default::default() }, 50)"
+      ],
+      "expected": {
+        "looseHits": ["a.ts:1", "a.ts:2"],
+        "wholeWordHits": ["a.ts:1"]
+      },
+      "notes": "Without whole_word, 'set' matches both the standalone identifier on line 1 and the substring inside 'offset' on line 2. With whole_word: true, the matcher is wrapped \\b(?:set)\\b, so only line 1 matches."
+    },
+    {
+      "id": "regex-mode-vs-literal",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": { "a.ts": "fn one() {}\nfn two() {}\nconst three = 3;\n" }
+        }
+      },
+      "steps": [
+        "search(repo, \"fn \\\\w+\\\\(\", SearchOptions { regex: true, ..Default::default() }, 50)",
+        "search(repo, \"fn \\\\w+\\\\(\", SearchOptions::default(), 50)"
+      ],
+      "expected": {
+        "regexModeHits": ["a.ts:1", "a.ts:2"],
+        "literalModeHits": []
+      },
+      "notes": "The pattern is the literal raw string r\"fn \\w+\\(\". With regex: true it's compiled as a pattern and matches both function declarations. With regex: false (default) the same text is escaped and searched for literally, matching nothing since no line contains that exact backslash-laden substring."
+    },
+    {
+      "id": "invalid-regex-error",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": { "a.ts": "x\n" }
+        }
+      },
+      "steps": [
+        "search(repo, \"foo(\", SearchOptions { regex: true, ..Default::default() }, 50)"
+      ],
+      "expected": {
+        "error": { "startsWith": "invalid regular expression" }
+      },
+      "notes": "An unbalanced '(' fails Regex::new; build_matcher reduces the regex engine's multi-line Display error to its last line, trimmed, and prefixes 'invalid regular expression: '. The exact suffix text is not asserted by the original test (only the prefix is), so only the prefix is a binding contract."
+    },
+    {
+      "id": "include-exclude-globs",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": {
+            "src/a.ts": "needle\n",
+            "src/a.test.ts": "needle\n",
+            "docs/a.md": "needle\n"
+          }
+        }
+      },
+      "steps": [
+        "search(repo, \"needle\", SearchOptions { include: \"*.ts\", ..Default::default() }, 50)",
+        "search(repo, \"needle\", SearchOptions { include: \"*.ts\", exclude: \"*.test.ts\", ..Default::default() }, 50)",
+        "search(repo, \"needle\", SearchOptions { include: \"docs/**\", ..Default::default() }, 50)"
+      ],
+      "expected": {
+        "onlyTsIncludeHits": ["src/a.test.ts:1", "src/a.ts:1"],
+        "excludeAfterIncludeHits": ["src/a.ts:1"],
+        "docsOnlyIncludeHits": ["docs/a.md:1"]
+      },
+      "notes": "A bare pattern with no '/' (e.g. '*.ts') is rewritten to '**/*.ts' and matches by file name at any depth; a pattern with '/' (e.g. 'docs/**') is matched against the full repo-relative path. Result order follows the walk's file_name()-sorted traversal: 'src/a.test.ts' sorts before 'src/a.ts' lexicographically ('e' < 's' at the 4th character). Exclude is applied after, and independent of, include — it can only remove, never re-admit., build_globs at the implementation."
+    },
+    {
+      "id": "replace-and-checkpoint-undo",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": {
+            "src/a.ts": "const oldName = 1;\nuse(oldName);\n",
+            "src/b.ts": "nothing here\n"
+          }
+        }
+      },
+      "steps": [
+        "replace_all(repo, \"oldName\", \"newName\", SearchOptions::default(), None)",
+        "git::checkpoint::restore(repo, outcome.checkpoint_id)"
+      ],
+      "expected": {
+        "replacements": 2,
+        "files": 1,
+        "srcATsAfterReplace": "const newName = 1;\nuse(newName);\n",
+        "checkpointIdPresent": true,
+        "srcATsAfterRestore": "const oldName = 1;\nuse(oldName);\n"
+      },
+      "notes": "src/b.ts has no match so it is never touched (files: 1, not 2). The checkpoint is taken before any file is written via the checkpoint helpernt::create(repo_path, \"replace-all\") — that mechanism's internals are owned by the git-checkpoint domain document, not this one; here it is exercised as an opaque dependency whose restore() reverts the write."
+    },
+    {
+      "id": "replace-scoped-with-capture-groups",
+      "setup": {
+        "tempRepo": {
+          "gitInit": true,
+          "files": {
+            "a.ts": "call(1, 2);\n",
+            "b.ts": "call(3, 4);\n"
+          }
+        }
+      },
+      "steps": [
+        "replace_all(repo, \"call\\\\((\\\\d+), (\\\\d+)\\\\)\", \"call($2, $1)\", SearchOptions { regex: true, ..Default::default() }, Some(\"a.ts\"))"
+      ],
+      "expected": {
+        "files": 1,
+        "aTsAfterReplace": "call(2, 1);\n",
+        "bTsUnchanged": "call(3, 4);\n"
+      },
+      "notes": "only_path scopes the walk's candidate list to exactly 'a.ts' before any matching happens, so b.ts is never even read despite also matching the pattern. $1/$2 capture-group references in the replacement string work because options.regex is true, using the regex engine's replace_all group-reference syntax."
+    }
+  ]
+}

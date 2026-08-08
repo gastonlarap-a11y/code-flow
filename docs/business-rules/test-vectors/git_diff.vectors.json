@@ -1,0 +1,47 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Git/Diff.cs",
+  "sourceLines": "363-428",
+  "extractedFrom": [
+    "discard_all_reverts_tracked_edits_and_removes_untracked_files",
+    "discard_all_keeps_staged_content"
+  ],
+  "kind": "scenario",
+  "unit": "discard_all_changes(repo_path)",
+  "cases": [
+    {
+      "id": "discard-all-reverts-tracked-removes-untracked",
+      "setup": {
+        "description": "Fixture repo`): libgit2 in a fresh temp dir, one committed file tracked.txt = 'original\\n' (message 'initial')."
+      },
+      "steps": [
+        "overwrite tracked.txt on disk with 'edited\\n', without staging",
+        "create directory nested/ and write nested/new.txt = 'brand new\\n' (untracked file inside a brand-new untracked directory)",
+        "call discard_all_changes(repo_path)"
+      ],
+      "expected": {
+        "tracked.txt_content": "original\n",
+        "nested/new.txt_exists": false,
+        "nested_dir_exists": false
+      },
+      "notes": "tracked.txt is force-checked-out from the index (which still holds 'original\\n' since nothing was staged) back over the unstaged edit. nested/new.txt is untracked so it is deleted from disk directly; the now-empty nested/ directory it lived in is also removed by discard_all_changes's walk-up-while-empty cleanup, so the directory itself must not survive either — this is the untracked-directory-cleanup behaviour, not a side effect of git itself (git never tracks empty directories, but this app's discard also removes the emptied directory to avoid leaving a stray empty folder in the file tree)."
+    },
+    {
+      "id": "discard-all-keeps-staged-content",
+      "setup": {
+        "description": "Same base fixture as discard-all-reverts-tracked-removes-untracked: tracked.txt = 'original\\n' committed."
+      },
+      "steps": [
+        "overwrite tracked.txt on disk with 'staged version\\n' and stage it (index.add_path + index.write)",
+        "overwrite tracked.txt on disk again with 'unstaged version\\n', on top of the staged content, without re-staging",
+        "call discard_all_changes(repo_path)"
+      ],
+      "expected": {
+        "tracked.txt_content": "staged version\n",
+        "status_is_index_modified": true,
+        "status_is_wt_modified": false
+      },
+      "notes": "discard_all_changes restores tracked.txt from the current INDEX (which holds 'staged version\\n'), not from HEAD (which holds 'original\\n') — so only the second, unstaged edit is rolled back; the staged edit survives untouched, both on disk and in the index. This is the GIT-012 guarantee that staged-only changes are never touched by discard-all: after discard, libgit2 reports is_index_modified() true (still staged relative to HEAD) and is_wt_modified() false (working tree now matches the index exactly)."
+    }
+  ]
+}

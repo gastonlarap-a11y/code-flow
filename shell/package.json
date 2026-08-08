@@ -1,0 +1,26 @@
+{
+  "name": "codeflow-shell",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Electron shell for CodeFlow: window, tray, native menu, and the bridge to the .NET core",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint .",
+    "test": "tsc && node --test \"dist/**/*.test.js\"",
+    "dev": "tsc && CODEFLOW_DEV_SERVER=http://localhost:1420 electron .",
+    "start": "electron .",
+    "pack": "electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.5",
+    "electron": "43.3.0",
+    "electron-builder": "26.15.7",
+    "eslint": "^10.8.0",
+    "globals": "^17.9.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.66.0"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

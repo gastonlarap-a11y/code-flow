@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Settings shared by every project. AGENTS.md requires the current .NET LTS, nullable
+    reference types on, and warnings as errors; the rest follows from the app being a desktop
+    sidecar rather than a service.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- The app persists user text (repo paths, prompts, review findings) in many languages,
+         so culture-sensitive behaviour must be predictable rather than machine-dependent. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Deterministic output keeps build artifacts comparable across machines and CI. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Central package versions live in Directory.Packages.props. -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!-- Lock files turn the pinned graph from inferred-deterministic into verified: CI restores
+         with locked-mode and fails on any drift Directory.Packages.props alone would not catch. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,2 @@
+## NIVEL DE REVISIÓN ACTIVO: completo
+Thorough review through the five main lenses. Report findings with confidence ≥ 60 (`Blocker` with ≥ 50). Include `Blocker`/`Crítico`/`Mayor`/`Menor`; leave `Info` out unless it is clearly useful. Do not invent trivial findings when the code is sound.

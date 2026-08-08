@@ -1,0 +1,114 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Activity/ActivityLogStore.cs",
+  "sourceLines": "971-1093",
+  "extractedFrom": [
+    "separate_conversations_stay_separate_even_when_the_engine_reuses_one_session_id",
+    "one_conversation_stays_one_activity_even_when_the_engine_changes_session_id",
+    "a_conversation_reports_the_provider_of_its_latest_turn",
+    "a_conversation_without_recorded_providers_reports_none",
+    "a_conversation_keeps_the_engine_session_of_each_turn"
+  ],
+  "kind": "scenario",
+  "unit": "activity_log-backed chat conversation grouping/reporting: list_chat_conversations, last_turn_provider, get_conversation_messages",
+  "cases": [
+    {
+      "id": "conversation-id-not-engine-session-id-is-the-grouping-key",
+      "unit": "list_chat_conversations(conn, project_id, search: None)",
+      "setup": {
+        "seedSql": "sql/queries-workspace-project.sql"
+      },
+      "steps": [
+        "run migrations::run() against an empty in-memory database",
+        "apply sql/queries-workspace-project.sql",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a1','proj-1','conv-1','agy-last','primera pregunta','answer','2024-01-01T00:00:01+00:00',0)",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a2','proj-1','conv-2','agy-last','segunda pregunta','answer','2024-01-01T00:00:02+00:00',0)",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a3','proj-1','conv-3','agy-last','tercera pregunta','answer','2024-01-01T00:00:03+00:00',0)",
+        "call list_chat_conversations(conn, 'proj-1', None)"
+      ],
+      "expected": {
+        "conversations": [
+          { "sessionId": "conv-3", "projectId": "proj-1", "title": "tercera pregunta", "createdAt": "2024-01-01T00:00:03+00:00", "updatedAt": "2024-01-01T00:00:03+00:00", "turnCount": 1 },
+          { "sessionId": "conv-2", "projectId": "proj-1", "title": "segunda pregunta", "createdAt": "2024-01-01T00:00:02+00:00", "updatedAt": "2024-01-01T00:00:02+00:00", "turnCount": 1 },
+          { "sessionId": "conv-1", "projectId": "proj-1", "title": "primera pregunta", "createdAt": "2024-01-01T00:00:01+00:00", "updatedAt": "2024-01-01T00:00:01+00:00", "turnCount": 1 }
+        ]
+      },
+      "notes": "Regression fixture for the bug this grouping-key split fixed: Gemini/agy reports one fixed engine_session_id ('agy-last') for every run. Grouping on the app-minted session_id (the conversation id) rather than engine_session_id keeps the three conversations separate. Result order is updated_at DESC."
+    },
+    {
+      "id": "one-conversation-survives-an-engine-session-id-change-mid-conversation",
+      "unit": "list_chat_conversations(conn, project_id, search: None)",
+      "setup": {
+        "seedSql": "sql/queries-workspace-project.sql"
+      },
+      "steps": [
+        "run migrations::run() against an empty in-memory database",
+        "apply sql/queries-workspace-project.sql",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a1','proj-1','conv-1','session-a','pregunta','answer','2024-01-01T00:00:01+00:00',0)",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a2','proj-1','conv-1','session-b','seguimiento','answer','2024-01-01T00:00:02+00:00',0)",
+        "call list_chat_conversations(conn, 'proj-1', None)"
+      ],
+      "expected": {
+        "conversations": [
+          { "sessionId": "conv-1", "projectId": "proj-1", "title": "pregunta", "createdAt": "2024-01-01T00:00:01+00:00", "updatedAt": "2024-01-01T00:00:02+00:00", "turnCount": 2 }
+        ]
+      },
+      "notes": "Mirror case: the Claude CLI can mint a new engine_session_id on each resumed turn. Because the grouping key is session_id (the conversation id), both turns collapse into one conversation. title is the FIRST turn's question (insertion order into the HashMap, not lexical/alphabetical); updated_at is the LAST turn's created_at."
+    },
+    {
+      "id": "conversation-reports-latest-turns-provider",
+      "unit": "last_turn_provider(conn, project_id, conversation_id)",
+      "setup": {
+        "seedSql": "sql/queries-workspace-project.sql"
+      },
+      "steps": [
+        "run migrations::run() against an empty in-memory database",
+        "apply sql/queries-workspace-project.sql",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error, provider) VALUES ('a1','proj-1','conv-1','engine-session','pregunta','answer','2024-01-01T00:00:01+00:00',0,'opencode')",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error, provider) VALUES ('a2','proj-1','conv-1','engine-session','pregunta','answer','2024-01-01T00:00:02+00:00',0,'claude')",
+        "call last_turn_provider(conn, 'proj-1', 'conv-1')"
+      ],
+      "expected": { "result": "claude" },
+      "notes": "SELECT ... WHERE provider IS NOT NULL ORDER BY created_at DESC LIMIT 1 — the most recently created row with a non-NULL provider wins, which is how a resume token left behind by a different CLI (after the chat's routing changed) is detected by claude_cmd::session_for_provider."
+    },
+    {
+      "id": "conversation-without-recorded-providers-reports-none",
+      "unit": "last_turn_provider(conn, project_id, conversation_id)",
+      "setup": {
+        "seedSql": "sql/queries-workspace-project.sql"
+      },
+      "steps": [
+        "run migrations::run() against an empty in-memory database",
+        "apply sql/queries-workspace-project.sql",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a1','proj-1','conv-1','session-a','pregunta','answer','2024-01-01T00:00:01+00:00',0)",
+        "call last_turn_provider(conn, 'proj-1', 'conv-1')",
+        "call last_turn_provider(conn, 'proj-1', 'conv-inexistente')"
+      ],
+      "expected": {
+        "conv-1": null,
+        "conv-inexistente": null
+      },
+      "notes": "Rows written before provider tracking existed have provider = NULL, which the WHERE provider IS NOT NULL filter excludes entirely, so the query returns no row rather than a NULL value. The caller reads None as 'can't tell' and keeps whatever session it already had, rather than discarding a working one. A conversation id with zero rows produces the identical None, so the two cases are indistinguishable from this function's return alone."
+    },
+    {
+      "id": "get-conversation-messages-tracks-the-latest-turns-engine-session",
+      "unit": "get_conversation_messages(conn, project_id, session_id)",
+      "setup": {
+        "seedSql": "sql/queries-workspace-project.sql"
+      },
+      "steps": [
+        "run migrations::run() against an empty in-memory database",
+        "apply sql/queries-workspace-project.sql",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a1','proj-1','conv-1','session-a','pregunta','answer','2024-01-01T00:00:01+00:00',0)",
+        "INSERT INTO activity_log (id, project_id, session_id, engine_session_id, question, answer, created_at, is_error) VALUES ('a2','proj-1','conv-1','session-b','seguimiento','answer','2024-01-01T00:00:02+00:00',0)",
+        "call get_conversation_messages(conn, 'proj-1', 'conv-1')",
+        "take the last non-null engine_session_id among the returned turns, oldest first"
+      ],
+      "expected": {
+        "turnOrder": ["a1", "a2"],
+        "lastEngineSessionId": "session-b"
+      },
+      "notes": "get_conversation_messages orders ASC by created_at (oldest first) so the frontend can flatten turns directly into [user, assistant, user, assistant, ...]. Reopening a conversation must resume the engine session of its LATEST turn, i.e. the last element's engine_session_id, not the first."
+    }
+  ]
+}

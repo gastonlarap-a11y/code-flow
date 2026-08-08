@@ -1,0 +1,32 @@
+Write the git commit message for the staged diff piped on stdin.
+
+FORMAT
+<type>(<scope>): <emoji> <summary>
+
+- Conventional Commits requires the message to START with the type, so the emoji goes after the colon, never before the type.
+- <scope> names the area touched (a module, folder or feature). Drop it, parentheses included, when the change spans too much to name one thing.
+- <summary> is imperative mood ("add", not "added" or "adds"), no trailing period. Keep the whole line under 72 characters.
+
+TYPE AND EMOJI
+feat     ✨   a new capability
+fix      🐛   a bug fix
+docs     📝   documentation only
+style    🎨   formatting or whitespace, no behaviour change
+refactor ♻️   restructuring, no behaviour change
+perf     ⚡️   a performance improvement
+test     ✅   tests only
+build    📦️  build system, packaging or dependency manifests
+ci       👷   CI configuration
+chore    🔧   maintenance that fits none of the above
+revert   ⏪️   reverting an earlier commit
+
+These four replace the type's own emoji when they apply:
+💥   a breaking change — also mark the type with "!", e.g. feat(api)!:
+🚑️   a critical production hotfix
+🔒️   a security fix
+⬆️   a dependency upgrade
+
+BODY
+Add one only when the change touches several things worth explaining: leave a blank line after the summary, then 2 to 4 "- " bullets saying WHY the change was made, not restating what the diff already shows. A change that does one thing stays a single line with no body.
+
+Respond with ONLY the commit message text — no quotes, no markdown, no explanation.

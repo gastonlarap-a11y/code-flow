@@ -1,0 +1,72 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Git/Checkpoints.cs",
+  "sourceLines": "254-346",
+  "extractedFrom": [
+    "restores_edited_files_and_deletes_the_ones_the_run_created",
+    "snapshots_uncommitted_work_and_leaves_the_index_alone",
+    "a_run_that_changed_nothing_drops_its_checkpoint"
+  ],
+  "kind": "scenario",
+  "unit": "create/list/restore/remove_if_unchanged(repo_path, ...)",
+  "cases": [
+    {
+      "id": "restore-reverts-edits-and-deletes-created-files",
+      "setup": {
+        "description": "Fixture repo`): libgit2 in a fresh temp dir, one committed file tracked.txt = 'original\\n' (message 'initial')."
+      },
+      "steps": [
+        "call checkpoint::create(repo_path, \"fix-finding\") -> id",
+        "overwrite tracked.txt on disk with 'rewritten by the agent\\n' (simulating an AI edit)",
+        "write a new file new.txt = 'created by the agent\\n' (simulating an AI-created file)",
+        "call checkpoint::list(repo_path)",
+        "call checkpoint::restore(repo_path, id)"
+      ],
+      "expected": {
+        "list_length": 1,
+        "list_0_kind": "fix-finding",
+        "list_0_changed_paths": ["new.txt", "tracked.txt"],
+        "restore_returns": ["new.txt", "tracked.txt"],
+        "tracked.txt_content_after_restore": "original\n",
+        "new.txt_exists_after_restore": false
+      },
+      "notes": "changed_paths/restore's touched-path list is sorted alphabetically (diff_paths sorts). new.txt has no entry in the checkpoint's tree, so restore deletes it rather than writing anything; tracked.txt's blob from the checkpoint's tree is written back verbatim. Confirms restore never touches the index or HEAD (GIT-024) — only working-tree file content."
+    },
+    {
+      "id": "snapshot-leaves-index-alone",
+      "setup": {
+        "description": "Same base fixture as restore-reverts-edits-and-deletes-created-files: tracked.txt = 'original\\n' committed."
+      },
+      "steps": [
+        "write staged.txt = 'staged content\\n' and stage it (index.add_path + index.write) — this is the real on-disk .git/index, not the checkpoint's in-memory one",
+        "write untracked.txt = 'untracked content\\n' without staging it",
+        "call checkpoint::create(repo_path, \"chat\") -> id",
+        "read the real repo index's path list",
+        "delete untracked.txt from disk; overwrite staged.txt on disk with 'clobbered\\n'",
+        "call checkpoint::restore(repo_path, id)"
+      ],
+      "expected": {
+        "index_paths_after_create": ["staged.txt", "tracked.txt"],
+        "untracked.txt_content_after_restore": "untracked content\n",
+        "staged.txt_content_after_restore": "staged content\n"
+      },
+      "notes": "Proves create()'s snapshot_tree builds a brand-new libgit2 attached only to its own in-process Repository handle (repo.set_index) — the real on-disk index used for staging is never read or written by checkpoint creation, so it still shows exactly [staged.txt, tracked.txt] afterward. Both the staged file and the untracked file were captured in the snapshot (statuses() with include_untracked reports both), so restoring after clobbering/deleting them on disk puts back their checkpoint-time content for both, regardless of staged-vs-untracked status."
+    },
+    {
+      "id": "unchanged-checkpoint-auto-drops",
+      "setup": {
+        "description": "Same base fixture: tracked.txt = 'original\\n' committed, no further edits made before or after checkpoint creation."
+      },
+      "steps": [
+        "call checkpoint::create(repo_path, \"chat\") -> id",
+        "call checkpoint::remove_if_unchanged(repo_path, id)",
+        "call checkpoint::list(repo_path)"
+      ],
+      "expected": {
+        "remove_if_unchanged_returns": true,
+        "list_after_length": 0
+      },
+      "notes": "Nothing changed the working tree between create() and remove_if_unchanged(), so diff_paths(repo, commit) is empty and the checkpoint is deleted immediately — used by the Claude command's post-AI-run cleanup (05-ai-engines.md) so a run that touched nothing leaves no undo entry for the user to see."
+    }
+  ]
+}

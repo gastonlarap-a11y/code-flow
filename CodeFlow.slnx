@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CodeFlow.App/CodeFlow.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CodeFlow.Tests/CodeFlow.Tests.csproj" />
+  </Folder>
+</Solution>

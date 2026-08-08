@@ -1,0 +1,88 @@
+[
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/Engines/Gemini.cs",
+    "sourceLines": "160-193",
+    "extractedFrom": [
+      "a_successful_run_returns_stdout_as_the_reply",
+      "surfaces_the_failure_detail",
+      "a_quota_message_gets_the_marker",
+      "empty_output_on_a_clean_exit_is_an_error_not_a_blank_reply"
+    ],
+    "kind": "vector",
+    "unit": "interpret_output",
+    "cases": [
+      {
+        "id": "a-successful-run-returns-stdout-and-the-session-sentinel",
+        "input": {
+          "success": true,
+          "statusLabel": "exit status: 0",
+          "stdout": "  feat: add thing  ",
+          "stderr": ""
+        },
+        "expected": {
+          "text": "feat: add thing",
+          "sessionId": "agy-last"
+        },
+        "notes": "SESSION_SENTINEL is a fixed string, not a real conversation id — agy never reports one to a --print caller."
+      },
+      {
+        "id": "surfaces-the-failure-detail",
+        "input": {
+          "success": false,
+          "statusLabel": "exit status: 1",
+          "stdout": "",
+          "stderr": "not signed in — run `agy` to log in"
+        },
+        "expected": {
+          "error": "agy exited with an error (exit status: 1): not signed in — run `agy` to log in"
+        }
+      },
+      {
+        "id": "a-quota-message-gets-the-marker",
+        "input": {
+          "success": false,
+          "statusLabel": "exit status: 1",
+          "stdout": "",
+          "stderr": "quota exceeded, try again in 2h"
+        },
+        "expected": {
+          "error": "QUOTA_EXCEEDED::quota exceeded, try again in 2h"
+        }
+      },
+      {
+        "id": "empty-output-on-a-clean-exit-is-an-error-not-a-blank-reply",
+        "input": {
+          "success": true,
+          "statusLabel": "exit status: 0",
+          "stdout": "   ",
+          "stderr": ""
+        },
+        "expected": {
+          "error": "agy produced no output"
+        }
+      }
+    ]
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/Engines/Gemini.cs",
+    "sourceLines": "146-156",
+    "extractedFrom": [
+      "small_prompts_stay_inline"
+    ],
+    "kind": "vector",
+    "unit": "write_brief_file_if_large — None when content.len() <= INLINE_LIMIT (12000)",
+    "cases": [
+      {
+        "id": "a-4-char-prompt-stays-inline",
+        "input": {
+          "content": "hola"
+        },
+        "expected": {
+          "wroteTempFile": false
+        }
+      }
+    ]
+  }
+]

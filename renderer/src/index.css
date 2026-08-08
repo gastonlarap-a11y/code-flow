@@ -1,0 +1,656 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Both families are self-hosted — see the imports in `main.tsx`. The fallbacks stay because a
+     font file can fail to decode, and a fallback chain is cheaper than a blank window. */
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* The type scale. Before this, text size was an arbitrary pixel value picked per component —
+     `text-[11px]` in 308 places, `text-[12px]` in 281, `text-[13px]` in 148 — with line height
+     chosen independently and rarely to match. Size and line height travel together here so that
+     picking one picks the other, and the five steps are all there is: `--text-badge` is the floor
+     and is reserved for eyebrow labels and badges, never for anything a user has to read at
+     length. Areas migrate onto these one at a time (Phase C), not by find-and-replace. */
+  --text-badge: 11px;
+  --text-badge--line-height: 16px;
+  --text-ui: 12px;
+  --text-ui--line-height: 18px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-relaxed: 15px;
+  --text-relaxed--line-height: 22px;
+  --text-title: 18px;
+  --text-title--line-height: 26px;
+
+  /* The two radius tiers already in use de facto, named: controls were `rounded-md` and panels
+     were `rounded-xl`, and every new surface had to guess which it was. */
+  --radius-control: 6px;
+  --radius-card: 12px;
+}
+
+/* The palette lives here once, in `light-dark()`, and used to live here three times: a `:root`
+   block, a `[data-theme="dark"]` block, and a `prefers-color-scheme` block repeating the dark
+   block verbatim. Three copies of eighteen colours is how one of them ends up a shade off.
+ *
+ * `color-scheme` is what makes `light-dark()` resolve, and it also tells Chromium which way to
+ * paint native form controls — which is what we wanted anyway.
+ *
+ * These values are only the pre-boot defaults. `themeStore.applyToDocument()` stamps
+ * `data-theme` and `codeThemes.applyThemeVars()` writes the selected theme's colours inline on
+ * `documentElement`, which outranks everything below. The `light-dark()` half earns its keep in
+ * the frames before that runs: a system-dark user no longer sees a white flash. */
+:root {
+  color-scheme: light dark;
+
+  --cf-bg: light-dark(#f7f7fb, #16161d);
+  --cf-surface: light-dark(#ffffff, #1e1e27);
+  /* The raised surface carries a trace of the accent — 4% of it, mixed in OKLCH so the result keeps
+     the surface's lightness instead of drifting toward the accent's. It is what makes the whole app
+     answer to the chosen accent rather than only its buttons, and at 4% it reads as warmth rather
+     than as a tint. `codeThemes.applyThemeVars()` overwrites this per theme, and it re-derives the
+     mix from that theme's own surface, so all 21 keep their identity. */
+  --cf-surface-raised: light-dark(
+    color-mix(in oklch, #ffffff, var(--cf-accent) 4%),
+    color-mix(in oklch, #262632, var(--cf-accent) 4%)
+  );
+  --cf-border: light-dark(#e7e7ef, #313140);
+  --cf-text: light-dark(#1c1c26, #eceef5);
+  --cf-text-muted: light-dark(#6b6b7d, #9797ab);
+  --cf-accent: light-dark(#6260ff, #808aff);
+  --cf-accent-soft: light-dark(color-mix(in oklab, var(--cf-accent) 14%, var(--cf-surface)), #2a2a44);
+  /* The accent as a fill behind text, and what goes on it. Two properties rather than one because
+     the light theme needs a darker shade and the dark theme needs a darker *foreground*: its accent
+     is the lighter 400, so white on it measured 1.67–2.98:1. `accentStore.ts` restamps both together
+     when the accent changes; these are the indigo defaults for the frames before that runs, and
+     `accentStore.test.ts` holds every option to 4.5:1. */
+  --cf-accent-solid: light-dark(#4338ca, #818cf8);
+  --cf-accent-on-solid: light-dark(#ffffff, #16161d);
+  /* Status colours are fixed while `codeThemes.applyThemeVars()` repaints the surfaces under them,
+     so the shade has to clear the *worst* surface of its side, not the default one. The light shades
+     were 500-level and measured 3.19–3.30:1 on white; two steps down clears all ten light themes
+     including the tinted ones (`tokyo-night-light`'s #e1e2e7 is the tightest, at 5.48–5.51:1).
+     The dark shades now clear every dark theme, `--cf-danger` included — that was the last open item
+     in §II.7 and it is closed. It was red-400, which measured 2.86:1 on `darcula`'s unusually light
+     raised surface. The two shades on Tailwind's scale were both wrong: red-300 still misses at
+     4.16:1, and red-200 clears at 5.46:1 but is a pink that stops reading as an alarm. The value
+     below is between them, off the scale on purpose, and is the lightest red that clears all eleven
+     (4.58:1 on `darcula`, the worst of them). */
+  --cf-success: light-dark(#166534, #4ade80);
+  --cf-danger: light-dark(#b91c1c, #fdb2b2);
+  --cf-warning: light-dark(#92400e, #fbbf24);
+  /* The fourth semantic role, added with the 2.0 palette. Success/warning/danger described outcomes
+     and there was nothing for "in progress" or "for your information", so those borrowed the accent
+     — which is the one colour the user is allowed to change, meaning the same badge meant different
+     things to two people. Chosen against the same constraint as the other three: it has to clear
+     4.5:1 on the worst raised surface of its side, not just the default one — 5.39:1 on
+     `tokyo-night-light` and 4.90:1 on `darcula`, which are the two that decide it. */
+  --cf-info: light-dark(#1e5a9e, #a5d0fb);
+
+  /* `light-dark()` takes colours, not gradients or shadows — so the stops and the shadow tints
+     are the tokens, and the composite values are assembled from them. */
+  --cf-titlebar-1: light-dark(#c9e9e6, #163a3a);
+  --cf-titlebar-2: light-dark(#d8c9ec, #2a2148);
+  --cf-titlebar-3: light-dark(#f3c9d8, #3a1f30);
+  --cf-titlebar-gradient: linear-gradient(
+    120deg,
+    var(--cf-titlebar-1) 0%,
+    var(--cf-titlebar-2) 45%,
+    var(--cf-titlebar-3) 100%
+  );
+  --cf-shadow-near: light-dark(rgba(20, 20, 40, 0.04), rgba(0, 0, 0, 0.3));
+  --cf-shadow-far: light-dark(rgba(20, 20, 40, 0.06), rgba(0, 0, 0, 0.4));
+  --cf-shadow: 0 1px 2px var(--cf-shadow-near), 0 8px 24px var(--cf-shadow-far);
+
+  /* Same hue family as the titlebar gradient, just as washes rather than a solid band — the ambient
+     background behind Graph/Changes/Editor (see .cf-ambient-bg below). The mix percentage differs
+     per theme and `light-dark()` only takes colours, so each branch is a finished `color-mix()`
+     rather than a colour and a percentage chosen separately.
+   *
+   * Raised for 2.0, roughly half again as strong. These were tuned to sit behind flush panels that
+   * covered nearly all of them, so almost nothing showed; 2.0 turns those panels into cards with
+   * space around them (§4.6 of the redesign proposal), which makes this the canvas the whole app
+   * floats on rather than a detail at the edges. It is still a wash — the ceiling is the point at
+   * which text over the bare background starts losing contrast, and these stay well under it. */
+  --cf-ambient-1: light-dark(
+    color-mix(in oklab, #6fd0c8 30%, transparent),
+    color-mix(in oklab, #2dd4c4 24%, transparent)
+  );
+  --cf-ambient-2: light-dark(
+    color-mix(in oklab, #b79ae8 27%, transparent),
+    color-mix(in oklab, #8b6fd9 24%, transparent)
+  );
+  --cf-ambient-3: light-dark(
+    color-mix(in oklab, #f0a8c4 24%, transparent),
+    color-mix(in oklab, #d9527d 18%, transparent)
+  );
+
+  /* Focus was the app's biggest accessibility hole: `focus-visible` appeared in three files in the
+     whole renderer, so keyboard users had no idea where they were. Applied through `.cf-focusable`
+     below, which every primitive carries. */
+  --cf-focus-ring: 0 0 0 2px color-mix(in oklab, var(--cf-accent) 60%, transparent);
+
+  /* One overlay scale, replacing nine ad-hoc opacities between 0.03 and 0.4. */
+  --cf-overlay-hover: 0.05;
+  --cf-overlay-active: 0.09;
+  --cf-overlay-scrim: 0.35;
+
+  /* Row height in the two virtualized trees, a user preference — `densityStore` overwrites this
+     inline once its setting comes back over IPC. The value here is what the frames before that get,
+     so it has to equal `DEFAULT_DENSITY` in `lib/ui/density.ts` or the trees visibly jump on load.
+     `scripts/density-css.test.mjs` compares the two. */
+  --cf-row-height: 26px;
+}
+
+/* `light-dark()` follows `color-scheme`, so forcing a theme means forcing the scheme. Tailwind's
+   `dark:` variant keys off `[data-theme="dark"]` (see `@custom-variant` above) and is unaffected. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cf-bg);
+  color: var(--cf-text);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cf-border);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The two rules every interactive primitive carries.
+ *
+ * `.cf-focusable` replaces the outline rather than adding to it, because a 2px accent ring reads on
+ * every surface in all 24 code themes while the UA's own outline disappears against half of them.
+ * `:focus-visible` and not `:focus`, so a mouse click doesn't leave a ring behind.
+ *
+ * `.cf-interactive` exists because hover states used to snap: almost none of the `hover:bg-*` in the
+ * app carried a transition. Only the three properties that actually change are listed — animating
+ * `all` would drag layout and shadow along with them. */
+.cf-focusable:focus-visible {
+  outline: none;
+  box-shadow: var(--cf-focus-ring);
+}
+
+.cf-interactive {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-interactive {
+    transition: none;
+  }
+}
+
+[data-drag-region] {
+  -webkit-app-region: drag;
+}
+
+/* Under the shell the drag region was handled by the runtime, so interactive children stayed
+   clickable on their own. Electron implements it purely through `-webkit-app-region`, which
+   descendants inherit — without this, every control inside the title bar (window buttons, the
+   branch switcher, the AI menu) becomes a drag handle and stops responding to clicks. */
+[data-drag-region] button,
+[data-drag-region] a,
+[data-drag-region] input,
+[data-drag-region] select,
+[data-drag-region] textarea,
+[data-drag-region] [role="button"],
+[data-drag-region] [role="menu"],
+[data-drag-region] [role="menuitem"],
+[data-drag-region] [data-no-drag] {
+  -webkit-app-region: no-drag;
+}
+
+/* Fixed, viewport-sized wash behind Graph/Changes/Editor — those views previously sat on
+   plain solid `--cf-bg` with nothing else painted behind them, which read as flat and
+   monotonous. Soft corner blobs in the titlebar's own hue family break that up without
+   competing with foreground content (kept faint, and `fixed` so it doesn't scroll/repeat
+   oddly with the content beneath it). */
+.cf-ambient-bg {
+  position: relative;
+  isolation: isolate;
+}
+.cf-ambient-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 900px 520px at 6% -8%, var(--cf-ambient-1), transparent 60%),
+    radial-gradient(ellipse 820px 620px at 102% -4%, var(--cf-ambient-2), transparent 60%),
+    radial-gradient(ellipse 760px 520px at 46% 112%, var(--cf-ambient-3), transparent 62%),
+    var(--cf-bg);
+}
+
+/* Lightweight, GPU-only animations (opacity/transform) — no JS animation loop. */
+
+@keyframes cf-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.cf-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--cf-border) 25%,
+    color-mix(in oklab, var(--cf-border) 50%, var(--cf-surface)) 50%,
+    var(--cf-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: cf-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes cf-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.cf-bounce-dot {
+  animation: cf-bounce 1s ease-in-out infinite;
+}
+
+@keyframes cf-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cf-fade-in {
+  animation: cf-fade-in 0.15s ease-out;
+}
+
+/* "Thinking" orb — a living, morphing gradient blob standing in for a plain spinner
+   wherever Claude is actually working (chat, PR review, pre-commit analysis). Pure CSS
+   (transform/filter only, no canvas/JS loop) to stay consistent with the animations above. */
+@keyframes cf-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes cf-orb-morph {
+  0%,
+  100% {
+    border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+  }
+  33% {
+    border-radius: 58% 42% 39% 61% / 59% 52% 48% 41%;
+  }
+  66% {
+    border-radius: 63% 37% 54% 46% / 38% 62% 38% 62%;
+  }
+}
+@keyframes cf-orb-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.cf-orb {
+  --cf-orb-size: 22px;
+  --cf-orb-gradient: conic-gradient(from 0deg, var(--cf-accent), #d946ef, #22d3ee, var(--cf-accent));
+  position: relative;
+  display: inline-block;
+  width: var(--cf-orb-size);
+  height: var(--cf-orb-size);
+  flex-shrink: 0;
+}
+.cf-orb-sm {
+  --cf-orb-size: 14px;
+}
+.cf-orb-md {
+  --cf-orb-size: 22px;
+}
+.cf-orb-lg {
+  --cf-orb-size: 44px;
+}
+.cf-orb-glow,
+.cf-orb-core {
+  position: absolute;
+  inset: 0;
+  border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+  background: var(--cf-orb-gradient);
+  transform-origin: center;
+  animation:
+    cf-orb-spin 3.6s linear infinite,
+    cf-orb-morph 5s ease-in-out infinite,
+    cf-orb-pulse 2.2s ease-in-out infinite;
+}
+.cf-orb-glow {
+  filter: blur(calc(var(--cf-orb-size) * 0.45));
+  opacity: 0.6;
+}
+.cf-orb-core {
+  filter: saturate(1.2);
+  box-shadow: 0 0 calc(var(--cf-orb-size) * 0.25) color-mix(in oklab, var(--cf-accent) 55%, transparent);
+}
+/* The orb was the only animation that honoured this, which left the shimmer, the bouncing dots and
+ * the fade-in running for a user who asked the OS for none of it. The loading indicators keep their
+ * shape and colour — they just stop moving. */
+@media (prefers-reduced-motion: reduce) {
+  .cf-orb-glow,
+  .cf-orb-core,
+  .cf-skeleton,
+  .cf-bounce-dot,
+  .cf-fade-in {
+    animation: none;
+  }
+}
+
+.cf-editor-changed-gutter {
+  border-left: 3px solid var(--cf-success);
+  margin-left: 3px;
+}
+
+.cf-editor-changed-line {
+  background: color-mix(in oklab, var(--cf-success) 6%, transparent);
+}
+
+/* While a tab or an explorer row is being dragged. `!important` and the `*` reach are on purpose:
+ * this has to beat Monaco's own `user-select` rules on the editor lines, which is where the
+ * runaway selection showed up. */
+body.cf-dragging,
+body.cf-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: grabbing !important;
+}
+
+/* Row hover for the explorer and the tab strip.
+ *
+ * Note there is no `:hover` here: the class is applied from `state/rowHoverStore.ts`, because the
+ * engine's own hover state is unreliable across a hand-rolled drag — see that file. Uses
+ * `--cf-text` so one rule covers both themes: it's dark on light backgrounds and light on dark. */
+.cf-row-hover {
+  background-color: color-mix(in oklab, var(--cf-text) 5%, transparent);
+}
+
+/* Anchor tags (`// TODO:`, `# FIXME:`) coloured inside the comment they live in.
+ *
+ * `!important` because Monaco has already coloured that span with the theme's comment colour via
+ * an `.mtk*` class, and its stylesheet is injected into the head at runtime — after this file —
+ * so specificity alone loses. Colours mirror `ANCHOR_TAGS` in `lib/anchors.ts`: a tag added
+ * there needs a rule here. */
+.cf-anchor {
+  font-weight: 700 !important;
+  font-style: normal !important;
+}
+.cf-anchor-anchor { color: #10b981 !important; }
+.cf-anchor-todo { color: #3b82f6 !important; }
+.cf-anchor-fixme { color: #ef4444 !important; }
+.cf-anchor-bug { color: #e11d48 !important; }
+.cf-anchor-hack { color: #f97316 !important; }
+.cf-anchor-note { color: #f59e0b !important; }
+.cf-anchor-review { color: #84cc16 !important; }
+.cf-anchor-optimize { color: #14b8a6 !important; }
+.cf-anchor-section { color: #8b5cf6 !important; }
+.cf-anchor-link { color: #06b6d4 !important; }
+.cf-anchor-stub { color: #a855f7 !important; }
+.cf-anchor-idea { color: #ec4899 !important; }
+.cf-anchor-xxx { color: #94a3b8 !important; }
+
+/* A breakpoint: the red dot editors have drawn in the gutter for thirty years. */
+.cf-breakpoint-glyph::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--cf-danger);
+}
+
+/* Where execution is stopped right now. */
+.cf-debug-current-line {
+  background: color-mix(in oklab, var(--cf-warning) 18%, transparent);
+}
+
+.cf-debug-current-glyph::before {
+  content: "▶";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: var(--cf-warning);
+}
+
+/* The editor's tab strip scrolls sideways when tabs overflow, but a 10px bar (the app-wide
+   default) would eat a third of a 36px tab row — keep it hairline and out of the way. */
+.cf-tab-strip::-webkit-scrollbar {
+  height: 3px;
+}
+
+.cf-tab-strip::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.cf-tab-strip:hover::-webkit-scrollbar-thumb {
+  background: var(--cf-border);
+}
+
+/* Everything the AI writes, and everything a human wrote in a PR thread, is selectable.
+ *
+ * `body` opts the whole app out of text selection so it feels native, and these three classes cover
+ * every markdown surface in it: the chat, the review and analysis summaries, a finding's subtitle,
+ * reasoning and suggestion, PR comment threads, saved reviews in Settings, SDD documents. None of
+ * them re-enabled it, so none of that text could be selected — and because Electron only offers
+ * "Copy" in its context menu when a selection is possible, right-clicking offered nothing either,
+ * and the macOS Edit ▸ Copy item was dead. Reporting an error meant retyping it.
+ *
+ * Set here rather than as a `select-text` class per call site: there are more than a dozen, and the
+ * next one added would have been unselectable again with nothing to notice it. */
+.cf-markdown-preview,
+.cf-markdown-chat,
+.cf-markdown-inline {
+  user-select: text;
+}
+
+.cf-markdown-preview {
+  color: var(--cf-text);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+.cf-markdown-preview h1,
+.cf-markdown-preview h2,
+.cf-markdown-preview h3,
+.cf-markdown-preview h4 {
+  font-weight: 600;
+  margin: 1.4em 0 0.6em;
+  line-height: 1.3;
+}
+.cf-markdown-preview h1 {
+  font-size: 1.6em;
+  border-bottom: 1px solid var(--cf-border);
+  padding-bottom: 0.3em;
+}
+.cf-markdown-preview h2 {
+  font-size: 1.3em;
+  border-bottom: 1px solid var(--cf-border);
+  padding-bottom: 0.25em;
+}
+.cf-markdown-preview h3 {
+  font-size: 1.1em;
+}
+.cf-markdown-preview p,
+.cf-markdown-preview ul,
+.cf-markdown-preview ol,
+.cf-markdown-preview blockquote,
+.cf-markdown-preview table,
+.cf-markdown-preview pre {
+  margin: 0.7em 0;
+}
+.cf-markdown-preview ul,
+.cf-markdown-preview ol {
+  padding-left: 1.5em;
+}
+.cf-markdown-preview li {
+  margin: 0.2em 0;
+}
+.cf-markdown-preview a {
+  color: var(--cf-accent);
+  text-decoration: underline;
+}
+.cf-markdown-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: color-mix(in oklab, var(--cf-text) 8%, transparent);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.cf-markdown-preview pre {
+  background: color-mix(in oklab, var(--cf-text) 6%, transparent);
+  border-radius: 8px;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+}
+.cf-markdown-preview pre code {
+  background: none;
+  padding: 0;
+}
+.cf-markdown-preview blockquote {
+  border-left: 3px solid var(--cf-border);
+  padding-left: 1em;
+  color: var(--cf-text-muted);
+}
+.cf-markdown-preview img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.cf-markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92em;
+}
+.cf-markdown-preview th,
+.cf-markdown-preview td {
+  border: 1px solid var(--cf-border);
+  padding: 0.4em 0.7em;
+  text-align: left;
+}
+.cf-markdown-preview th {
+  background: color-mix(in oklab, var(--cf-text) 5%, transparent);
+  font-weight: 600;
+}
+.cf-markdown-preview hr {
+  border: none;
+  border-top: 1px solid var(--cf-border);
+  margin: 1.5em 0;
+}
+
+/* Compact variant for chat bubbles — same rules, just tighter to fit a narrow panel. */
+.cf-markdown-chat {
+  font-size: 12px;
+  line-height: 1.55;
+}
+.cf-markdown-chat h1,
+.cf-markdown-chat h2,
+.cf-markdown-chat h3,
+.cf-markdown-chat h4 {
+  margin: 0.8em 0 0.4em;
+  font-size: 1.05em;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.cf-markdown-chat p,
+.cf-markdown-chat ul,
+.cf-markdown-chat ol,
+.cf-markdown-chat blockquote,
+.cf-markdown-chat table,
+.cf-markdown-chat pre {
+  margin: 0.5em 0;
+}
+.cf-markdown-chat p:first-child {
+  margin-top: 0;
+}
+.cf-markdown-chat p:last-child {
+  margin-bottom: 0;
+}
+.cf-markdown-chat pre {
+  padding: 0.6em 0.8em;
+  font-size: 0.95em;
+}
+
+/* Single-line variant (`renderInlineMarkdown`) — a finding's subtitle/why/suggestion field,
+ * so just enough styling for bold/code/links inline, no block spacing rules. */
+.cf-markdown-inline code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: color-mix(in oklab, var(--cf-text) 8%, transparent);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+.cf-markdown-inline a {
+  color: var(--cf-accent);
+  text-decoration: underline;
+}
+
+/* Monaco's own button tooltips ("Close (Escape)" on the find widget) are removed outright.
+ *
+ * They render as a floating box next to — and often over — the button that owns them, and in this
+ * app that box oscillates: it covers the button, the button reports a mouse-leave, the box hides,
+ * the pointer is over the button again, and it reappears. The result flickers and eats the click.
+ * `pointer-events: none` was tried first and did not stop it, so the element goes instead.
+ *
+ * The cost is small: these tooltips only restate an icon whose meaning is already obvious, and the
+ * keybinding they mention (Escape) works regardless. `.workbench-hover` is the hover-service
+ * widget used for those labels — the editor's own code hovers are a different widget
+ * (`.monaco-resizable-hover`) and are untouched. Verified in
+ * `monaco-editor/esm/vs/platform/hover/browser/hoverWidget.js`, where the class is added. */
+.workbench-hover {
+  display: none !important;
+}

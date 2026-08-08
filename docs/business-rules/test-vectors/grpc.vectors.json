@@ -1,0 +1,92 @@
+[
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/ApiClient/Grpc.cs",
+    "sourceLines": "793-903",
+    "extractedFrom": ["describes_a_proto_file"],
+    "kind": "scenario",
+    "unit": "pool_from_proto",
+    "setup": {
+      "protoSource": "syntax = \"proto3\";\npackage demo;\nimport \"google/protobuf/timestamp.proto\";\n\nenum Tier { TIER_FREE = 0; TIER_PAID = 1; }\n\nmessage Address { string city = 1; Address next = 2; }\n\nmessage Hello {\n  string name = 1;\n  int64 count = 2;\n  Tier tier = 3;\n  Address address = 4;\n  repeated string tags = 5;\n  map<string, int32> scores = 6;\n  google.protobuf.Timestamp at = 7;\n}\n\nmessage Reply { string text = 1; }\n\nservice Greeter {\n  rpc Unary(Hello) returns (Reply);\n  rpc Down(Hello) returns (stream Reply);\n  rpc Up(stream Hello) returns (Reply);\n}\n",
+      "note": "Written to a temp file and compiled with the proto compiler via pool_from_proto(path, []); the original test's own temp-directory bookkeeping is not part of the fixture — only the .proto content and the assertions against its compiled pool are."
+    },
+    "steps": [
+      "compile the proto source into a DescriptorPool via pool_from_proto",
+      "call services_from_pool(&pool) and find the 'demo.Greeter' service",
+      "compute the JSON example for method 'Down' (input_example)",
+      "parse that example JSON back into a DynamicMessage via parse_messages(&hello_desc, example, client_streaming=false)",
+      "render it back to JSON via messages_to_json(&parsed, as_array=true)",
+      "call parse_messages(&hello_desc, \"[{}, {}]\", client_streaming=false) and expect an error",
+      "call parse_messages(&hello_desc, \"[{}, {}]\", client_streaming=true) and expect 2 parsed messages"
+    ],
+    "cases": [
+      {
+        "id": "describe-proto-file",
+        "input": {
+          "proto": "see setup.protoSource",
+          "service": "demo.Greeter"
+        },
+        "expected": {
+          "greeter_method_count": 3,
+          "down_method": { "client_streaming": false, "server_streaming": true },
+          "up_method": { "client_streaming": true, "server_streaming": false },
+          "down_input_example": {
+            "name": "",
+            "count": 0,
+            "tier": "TIER_FREE",
+            "tags": [],
+            "scores": {},
+            "at": "1970-01-01T00:00:00Z",
+            "address": { "city": "", "next": {} }
+          },
+          "parsed_message_count_from_example": 1,
+          "rendered_json_starts_with": "[",
+          "two_messages_not_client_streaming": { "error": true },
+          "two_messages_client_streaming_count": 2
+        },
+        "notes": "The example generator's one-level recursion cap is what makes 'address.next' collapse to {} instead of recursing into Address again (self-referential message)."
+      }
+    ]
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/ApiClient/Grpc.cs",
+    "sourceLines": "793-903",
+    "extractedFrom": ["reflection_messages_match_the_wire_format"],
+    "kind": "vector",
+    "unit": "ServerReflectionRequest::encode_to_vec() / ServerReflectionResponse::decode(bytes)",
+    "cases": [
+      {
+        "id": "reflection-wire-format",
+        "input": {
+          "encode_calls": [
+            { "message_request": { "ListServices": "" } },
+            { "message_request": { "FileContainingSymbol": "ab" } },
+            { "message_request": { "FileByFilename": "ab" } }
+          ],
+          "decode_call": {
+            "wire_bytes": [18, 2, 58, 0, 50, 5, 10, 3, 10, 1, 97]
+          }
+        },
+        "expected": {
+          "encode_results_bytes": [
+            [58, 0],
+            [34, 2, 97, 98],
+            [26, 2, 97, 98]
+          ],
+          "decode_result": {
+            "variant": "ListServices",
+            "service_names": ["a"]
+          }
+        },
+        "notes": "Every byte array is decimal, unambiguous protobuf wire bytes copied from the original test's own hex literals (0x3A=58, 0x22=34, 0x1A=26, 0x12=18, 0x32=50, 0x0A=10, 'a'=97, 'b'=98).",
+        "wire_byte_annotations": {
+          "encode_1_list_services_empty": "field 7 (list_services), wire type 2 (length-delimited): tag = (7<<3)|2 = 0x3A = 58, length 0, no bytes",
+          "encode_2_file_containing_symbol_ab": "field 4, wire type 2: tag = (4<<3)|2 = 0x22 = 34, length 2, bytes 'a'=97 'b'=98",
+          "encode_3_file_by_filename_ab": "field 3, wire type 2: tag = (3<<3)|2 = 0x1A = 26, length 2, bytes 'a'=97 'b'=98",
+          "decode_input": "field 2 (original_request) { field 7: \"\" } = [0x12,0x02,0x3A,0x00], then field 6 (list_services_response) { field 1 (service) { field 1 (name): \"a\" } } = [0x32,0x05,0x0A,0x03,0x0A,0x01,'a']"
+        }
+      }
+    ]
+  }
+]

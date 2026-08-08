@@ -1,0 +1,154 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Ai/Engines/Claude.cs",
+  "sourceLines": "123-175",
+  "extractedFrom": [
+    "surfaces_the_reason_json_carries_when_stderr_is_empty",
+    "reads_the_verdict_out_of_a_streamed_run",
+    "a_streamed_failure_reports_its_reason_not_the_exit_status",
+    "falls_back_to_the_exit_status_when_nothing_explains_the_failure",
+    "a_quota_failure_still_gets_the_marker_the_frontend_looks_for",
+    "a_successful_run_still_returns_the_reply_and_session_id",
+    "non_json_stdout_on_a_clean_exit_is_passed_through",
+    "reports_the_model_the_cli_actually_ran",
+    "stays_silent_when_more_than_one_model_ran",
+    "a_missing_model_usage_field_is_not_an_error"
+  ],
+  "kind": "vector",
+  "unit": "interpret_output",
+  "cases": [
+    {
+      "id": "empty-stderr-surfaces-the-json-reason",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "{\"is_error\":true,\"stop_reason\":\"stop_sequence\",\n        \"session_id\":\"8c166654-4807-4d62-a1d7-33909c2efd55\",\"subtype\":\"success\",\n        \"result\":\"Failed to authenticate: OAuth session expired and could not be refreshed\"}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "Failed to authenticate: OAuth session expired and could not be refreshed"
+      },
+      "notes": "Real payload from a failing 'claude -p ... --output-format json' run: exit 1, empty stderr, reason only on stdout. The whole multi-line buffer fails the line-scan (no single line starts with '{') and falls back to parsing stdout as one JSON document."
+    },
+    {
+      "id": "reads-the-verdict-out-of-a-streamed-run",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-1\",\"model\":\"claude-opus-4-8\"}\n{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Read\",\"input\":{\"file_path\":\"src/App.tsx\"}}]},\"session_id\":\"s-1\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"session_id\":\"s-1\",\"result\":\"fix: guard the null case\",\"modelUsage\":{\"claude-opus-4-8\":{\"outputTokens\":9}}}\n",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "fix: guard the null case",
+        "sessionId": "s-1",
+        "model": "claude-opus-4-8"
+      },
+      "notes": "stream-json --verbose output: init event, an assistant tool_use turn, then the terminal 'result' event. Only the last 'result' line is read."
+    },
+    {
+      "id": "a-streamed-failure-reports-its-reason-not-the-exit-status",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-2\"}\n{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"result\":\"Unknown model 'nope'\"}\n",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "Unknown model 'nope'"
+      }
+    },
+    {
+      "id": "falls-back-to-the-exit-status-when-nothing-explains-the-failure",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 127",
+        "stdout": "",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "claude exited with an error (exit status: 127): sin salida en stdout ni stderr"
+      }
+    },
+    {
+      "id": "a-quota-failure-gets-the-marker",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "{\"is_error\":true,\"result\":\"Claude usage limit reached, resets at 5pm\"}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "QUOTA_EXCEEDED::Claude usage limit reached, resets at 5pm"
+      }
+    },
+    {
+      "id": "a-successful-run-trims-and-returns-the-reply-and-session-id",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"is_error\":false,\"session_id\":\"abc-123\",\"result\":\"  feat: add thing  \"}",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "feat: add thing",
+        "sessionId": "abc-123"
+      }
+    },
+    {
+      "id": "non-json-stdout-on-a-clean-exit-is-passed-through",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "plain text\n",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "plain text",
+        "sessionId": null,
+        "model": null
+      },
+      "notes": "A CLI that ignored --output-format (or an older build) still works: the whole-buffer JSON parse fails, so the trimmed raw stdout is the reply."
+    },
+    {
+      "id": "reports-the-model-the-cli-actually-ran",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"result\":\"ok\",\"modelUsage\":{\"claude-opus-4-8\":{\"outputTokens\":12}}}",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "ok",
+        "model": "claude-opus-4-8"
+      }
+    },
+    {
+      "id": "stays-silent-when-more-than-one-model-ran",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"result\":\"ok\",\"modelUsage\":{\"claude-opus-4-8\":{},\"claude-haiku-4-5-20251001\":{}}}",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "ok",
+        "model": null
+      },
+      "notes": "A turn that fanned out across models has no single honest answer; the caller falls back to whatever model is configured."
+    },
+    {
+      "id": "a-missing-model-usage-field-is-not-an-error",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"result\":\"ok\",\"session_id\":\"s1\"}",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "ok",
+        "sessionId": "s1",
+        "model": null
+      }
+    }
+  ]
+}

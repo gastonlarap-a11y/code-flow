@@ -1,0 +1,156 @@
+# Packaging for CodeFlow.
+#
+# The app is three build products that have to arrive together: this Electron shell, the React
+# renderer built by Vite, and the .NET sidecar published as a self-contained executable. Only the
+# shell is a node package, so the other two are staged as `extraResources` and resolved at runtime
+# through `process.resourcesPath` — see `sidecarPath()` and `rendererRoot` in `src/main.ts`.
+#
+# Run through `scripts/build-app.sh`, which produces the two staged directories first. Running
+# `electron-builder` on its own will package whatever `build/` happens to hold, which is how a
+# stale sidecar ends up shipped.
+
+appId: com.codeflow.app
+productName: CodeFlow
+copyright: Gastón Lara P.
+
+directories:
+  output: ../dist-installers
+  # Points at the staging directory `scripts/build-app.sh` recreates on every build, so nothing
+  # durable can live here — electron-builder's convention of reading `build/icon.icns` from it would
+  # find the file deleted. The icons are named explicitly under `mac`/`win` below and live in
+  # `assets/`, which the build script does not touch.
+  buildResources: build
+
+files:
+  - dist/**/*
+  # The tests compile alongside the code so they typecheck under the same strict settings, but they
+  # are not part of the app and `node --test` is the only thing that should ever load them.
+  - "!dist/**/*.test.*"
+  - assets/**/*
+  - package.json
+
+# The sidecar and the renderer, staged by the build script into shell/build/.
+#
+# `core` and `renderer` are the names main.ts joins onto process.resourcesPath; changing either
+# here means changing it there, and the failure is a blank window or a "core was not found" dialog
+# rather than a build error.
+extraResources:
+  - from: build/core
+    to: core
+    filter: ["**/*"]
+  - from: build/renderer
+    to: renderer
+    filter: ["**/*"]
+
+# Capabilities burned out of the shipped Electron binary.
+#
+# Each of these is a way to make a signed, trusted-looking CodeFlow run code that is not CodeFlow.
+# The app uses none of them, so turning them off costs nothing and removes the technique.
+electronFuses:
+  # ELECTRON_RUN_AS_NODE turns the app binary into a general-purpose Node interpreter. Nothing here
+  # needs it: the sidecar is a native executable spawned directly, not a forked Node process.
+  runAsNode: false
+
+  # NODE_OPTIONS can inject --require, which loads arbitrary code into the main process before any
+  # of ours runs. NODE_EXTRA_CA_CERTS goes with it and would let an added root vouch for a proxy.
+  enableNodeOptionsEnvironmentVariable: false
+
+  # --inspect and SIGUSR1 attach a debugger to the main process, where the preload, the IPC token
+  # and the credential commands all live.
+  enableNodeCliInspectArguments: false
+
+  # The renderer is served over the app:// protocol and never file:// — that is why the custom
+  # protocol handler exists at all (see main.ts). The extra privileges this fuse grants file://
+  # pages are therefore dead weight.
+  grantFileProtocolExtraPrivileges: false
+
+  # Required here, not optional: flipping any fuse rewrites the binary and invalidates its
+  # signature, and `identity: null` below means the only signature is the ad-hoc one. An
+  # ad-hoc-signed binary whose signature no longer matches will not launch on Apple Silicon at all.
+  resetAdHocDarwinSignature: true
+
+  # Deliberately NOT set: onlyLoadAppFromAsar and enableEmbeddedAsarIntegrityValidation. Both the
+  # renderer and the sidecar ship *outside* the asar on purpose (see `extraResources` below and
+  # main.ts's rendererRoot), so these need a real packaged build to prove they do not break
+  # resolution. Turning them on unverified would trade a security gain for a blank window.
+  #
+  # Also not set: enableCookieEncryption. It is a one-way transition, and Chromium's cookie jar is
+  # unused here — the API client's cookies live in SQLite, on the sidecar's side.
+
+mac:
+  category: public.app-category.developer-tools
+
+  # Without this the bundle ships Electron's own `electron.icns` — the generic atom every
+  # unbranded Electron app wears — and `Info.plist` names it as the bundle icon.
+  icon: assets/icon.icns
+
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+
+  # Unsigned, deliberately and explicitly.
+  #
+  # electron-builder does not ad-hoc sign and does not warn when it finds no identity — it simply
+  # skips signing — so an unsigned build would otherwise be a silence rather than a decision.
+  # `hardenedRuntime` has to come off with it: the hardened runtime without a signature can stop
+  # the app launching at all.
+  #
+  # The cost is Gatekeeper. On macOS Sequoia and later the Control-click → Open shortcut is gone;
+  # opening this build means letting it be refused once and then allowing it from System Settings →
+  # Privacy & Security. Signing needs an Apple Developer ID, which is a paid, external prerequisite
+  # with a real lead time.
+  identity: null
+  hardenedRuntime: false
+
+  # The sidecar's own binaries are already Mach-O executables; without this they are treated as
+  # resources and the shell cannot exec them.
+  extraResources:
+    - from: build/core
+      to: core
+      filter: ["**/*"]
+
+dmg:
+  # Nothing custom: the default window is a drag-to-Applications layout, and a bespoke background
+  # would be branding this port has not been given.
+  writeUpdateInfo: false
+
+win:
+  # Multi-resolution (16 → 256) so the taskbar, the installer and Explorer's large-icon view each
+  # take the size they need instead of scaling one bitmap.
+  icon: assets/icon.ico
+
+  # Named explicitly, and with no spaces in them. electron-builder's defaults are
+  # `CodeFlow Setup <version>.exe` and `CodeFlow <version>.exe`, and GitHub rewrites spaces to dots
+  # when it stores a release asset — so the name the update check reads back
+  # (`CodeFlow.1.7.5.exe`) stopped matching the name `sha256sum` recorded inside the digest file
+  # (`CodeFlow 1.7.5.exe`), and every Windows update was refused as unverifiable. It also made the
+  # installer and the portable build impossible to tell apart by anything but a space.
+  #
+  # Only a real release could show this: a build produces both files happily, and it is GitHub
+  # that renames them. Changing the names here fixes it where it starts.
+  artifactName: CodeFlow-Setup-${version}-${arch}.${ext}
+
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+portable:
+  # The portable build is a single executable that runs without installing. It is not what
+  # `update_download` should ever hand over on Windows — `UpdateAssets.For` looks for the installer
+  # — so its name has to be unmistakably different from the NSIS one.
+  artifactName: CodeFlow-Portable-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+  # Not `C:\CodeFlow`. That literal is where the *data* lives — the database, logs, clones and
+  # skills — and `AppPaths` hardcodes it because an existing 1.7.2 install already uses it
+  # (DIVERGENCE-BOOT-a). Installing the program there too would put an uninstaller next to the
+  # user's data with nothing marking which is which.
+  deleteAppDataOnUninstall: false

@@ -1,0 +1,148 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Ai/Engines/OpenCode.cs",
+  "sourceLines": "246-319",
+  "extractedFrom": [
+    "reads_the_reply_and_the_real_session_id_out_of_the_event_stream",
+    "joins_multiple_text_parts_in_order",
+    "an_error_event_beats_a_clean_exit_status",
+    "a_quota_failure_alongside_events_still_gets_the_marker",
+    "a_quota_error_event_gets_the_marker",
+    "a_dropped_session_explains_itself_instead_of_repeating_the_cli_error",
+    "falls_back_to_plain_stdout_and_reports_no_session",
+    "surfaces_the_failure_detail",
+    "a_quota_message_gets_the_marker",
+    "empty_output_on_a_clean_exit_is_an_error_not_a_blank_reply"
+  ],
+  "kind": "vector",
+  "unit": "interpret_output",
+  "cases": [
+    {
+      "id": "reads-the-reply-and-the-real-session-id-out-of-the-event-stream",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"type\":\"step_start\",\"timestamp\":1785160196000,\"sessionID\":\"ses_05c2930e3ffeAwuzpCYQ7CgtfG\",\"part\":{\"type\":\"step-start\"}}\n{\"type\":\"text\",\"timestamp\":1785160196045,\"sessionID\":\"ses_05c2930e3ffeAwuzpCYQ7CgtfG\",\"part\":{\"id\":\"prt_1\",\"messageID\":\"msg_1\",\"type\":\"text\",\"text\":\"  feat: add thing  \",\"time\":{\"start\":1,\"end\":2}}}\n{\"type\":\"step_finish\",\"timestamp\":1785160196050,\"sessionID\":\"ses_05c2930e3ffeAwuzpCYQ7CgtfG\",\"part\":{\"type\":\"step-finish\"}}\n",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "feat: add thing",
+        "sessionId": "ses_05c2930e3ffeAwuzpCYQ7CgtfG"
+      },
+      "notes": "Real --format json event shape from opencode 1.18.7: step_start, text, step_finish. Only 'text' events contribute reply text."
+    },
+    {
+      "id": "joins-multiple-text-parts-in-order",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"type\":\"text\",\"sessionID\":\"ses_a\",\"part\":{\"type\":\"text\",\"text\":\"first\"}}\n{\"type\":\"text\",\"sessionID\":\"ses_a\",\"part\":{\"type\":\"text\",\"text\":\"second\"}}\n",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "first\nsecond",
+        "sessionId": "ses_a"
+      }
+    },
+    {
+      "id": "an-error-event-beats-a-clean-exit-status",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"type\":\"error\",\"timestamp\":1785160196045,\"sessionID\":\"ses_05c2930e3ffeAwuzpCYQ7CgtfG\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"Unauthorized: unauthorized: AuthenticateToken authentication failed\",\"statusCode\":401}}}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "APIError: Unauthorized: unauthorized: AuthenticateToken authentication failed"
+      },
+      "notes": "Verbatim event from a live run whose Copilot token had expired — exit code 0, so only the event says the run failed."
+    },
+    {
+      "id": "a-quota-failure-alongside-events-still-gets-the-marker",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "{\"type\":\"step_start\",\"sessionID\":\"ses_a\",\"part\":{\"type\":\"step-start\"}}",
+        "stderr": "Error: Insufficient balance"
+      },
+      "expected": {
+        "error": "QUOTA_EXCEEDED::Error: Insufficient balance"
+      }
+    },
+    {
+      "id": "a-quota-error-event-gets-the-marker",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "{\"type\":\"error\",\"sessionID\":\"ses_a\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"Insufficient balance\"}}}",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "QUOTA_EXCEEDED::APIError: Insufficient balance"
+      }
+    },
+    {
+      "id": "a-dropped-session-explains-itself",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "",
+        "stderr": "Error: Session not found"
+      },
+      "expected": {
+        "error": "La sesión de opencode que continuaba esta conversación ya no existe (fue eliminada o purgada). Inicia una conversación nueva para volver a empezar."
+      },
+      "notes": "stale_session_hint rewrites the CLI's bare 'Session not found' whenever it appears case-insensitively anywhere in the failure detail."
+    },
+    {
+      "id": "falls-back-to-plain-stdout-and-reports-no-session",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "  feat: add thing  ",
+        "stderr": ""
+      },
+      "expected": {
+        "text": "feat: add thing",
+        "sessionId": null
+      },
+      "notes": "A build that ignored --format json still works, just without a session id."
+    },
+    {
+      "id": "surfaces-the-failure-detail",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "",
+        "stderr": "auth required: run `opencode auth login`"
+      },
+      "expected": {
+        "error": "opencode exited with an error (exit status: 1): auth required: run `opencode auth login`"
+      }
+    },
+    {
+      "id": "a-quota-message-gets-the-marker",
+      "input": {
+        "success": false,
+        "statusLabel": "exit status: 1",
+        "stdout": "",
+        "stderr": "You have hit your rate limit, try again in 1h"
+      },
+      "expected": {
+        "error": "QUOTA_EXCEEDED::You have hit your rate limit, try again in 1h"
+      }
+    },
+    {
+      "id": "empty-output-on-a-clean-exit-is-an-error-not-a-blank-reply",
+      "input": {
+        "success": true,
+        "statusLabel": "exit status: 0",
+        "stdout": "   ",
+        "stderr": ""
+      },
+      "expected": {
+        "error": "opencode produced no output"
+      }
+    }
+  ]
+}

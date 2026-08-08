@@ -1,0 +1,46 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Git/Stash.cs",
+  "sourceLines": "90-176",
+  "extractedFrom": [
+    "rename_top_stash_keeps_order",
+    "rename_non_top_stash_moves_it_to_top"
+  ],
+  "kind": "scenario",
+  "unit": "rename_stash(repo_path, index, new_message)",
+  "cases": [
+    {
+      "id": "rename-top-stash-keeps-order",
+      "setup": {
+        "description": "Fixture built by shelling out to the real `git` CLI`), not git2 — this is deliberate in the original test, so the stash messages carry git's own 'On <branch>: ' prefix convention exactly as a real `git stash push -m` would produce them. Sequence: `git init -q`; `git config user.email/user.name`; write a.txt = 'one\\n', `git add .`, `git commit -q -m init`. Then: write a.txt = 'two\\n', `git stash push -q -m \"first stash\"`. Then: write a.txt = 'three\\n', `git stash push -q -m \"second stash\"`. Resulting stash stack (index 0 = newest): stash@{0} message contains 'second stash', stash@{1} message contains 'first stash' — both prefixed by git with 'On <branch>: ', so the original test asserts containment, not equality, to stay independent of the host's default branch name."
+      },
+      "steps": [
+        "call list_stashes(repo_path) — assert length 2, [0].message contains \"second stash\", [1].message contains \"first stash\"",
+        "call rename_stash(repo_path, 0, \"renamed second\")",
+        "call list_stashes(repo_path) again"
+      ],
+      "expected": {
+        "length_after": 2,
+        "stash_0_message_after": "renamed second",
+        "stash_1_message_after_contains": "first stash"
+      },
+      "notes": "Renaming index 0 (already the newest) does not reorder anything. Unlike the original git-CLI-created messages, the reappended message is the caller's new_message used verbatim — no 'On <branch>: ' prefix is added by rename_stash's own repo.reference(...) call, so stash_0_message_after is an exact match, not a containment check."
+    },
+    {
+      "id": "rename-non-top-stash-moves-to-top",
+      "setup": {
+        "description": "Same fixture as rename-top-stash-keeps-order — two stashes, stash@{0}='second stash', stash@{1}='first stash' (both git-CLI-prefixed with 'On <branch>: ')."
+      },
+      "steps": [
+        "call rename_stash(repo_path, 1, \"renamed first\")",
+        "call list_stashes(repo_path)"
+      ],
+      "expected": {
+        "length_after": 2,
+        "stash_0_message_after": "renamed first",
+        "stash_1_message_after_contains": "second stash"
+      },
+      "notes": "Renaming index 1 (the older, non-top stash) drops it via stash_drop(1) and reappends it as the new refs/stash HEAD, so it becomes stash@{0} and the stash that used to be stash@{0} ('second stash') shifts down to stash@{1} unmodified. No stash is lost or duplicated: length stays 2. This is the documented reordering side effect of rename_stash (GIT-014 / DIVERGENCE-GIT-a) — the same trade-off as `git stash pop && git stash push -m \"...\"`."
+    }
+  ]
+}

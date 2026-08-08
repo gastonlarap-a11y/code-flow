@@ -1,0 +1,86 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Files/FileOps.cs",
+  "sourceLines": "230-305",
+  "extractedFrom": [
+    "creates_nested_file_and_dir",
+    "moves_within_the_repo_and_refuses_the_destructive_cases",
+    "rejects_duplicates_empty_names_and_traversal"
+  ],
+  "kind": "scenario",
+  "unit": "{create_dir, create_file, read_file_text, move_path}(repo_path, ...)",
+  "cases": [
+    {
+      "id": "creates-nested-file-and-dir",
+      "setup": {
+        "tempRepo": "empty directory, no git init required (fsops has no git dependency)"
+      },
+      "steps": [
+        "create_dir(repo, \"src/nested\")",
+        "assert repo/src/nested is a directory",
+        "create_file(repo, \"src/nested/new.ts\")",
+        "read_file_text(repo, \"src/nested/new.ts\")"
+      ],
+      "expected": {
+        "createDirResult": "Ok(())",
+        "srcNestedIsDir": true,
+        "createFileResult": "Ok(())",
+        "readFileTextResult": ""
+      },
+      "notes": "create_dir uses create_dir_all so all missing intermediate components (src, src/nested) are made in one call; create_file then creates the file plus its (already-existing) parent, and reading it back returns an empty string."
+    },
+    {
+      "id": "move-refuses-destructive-cases",
+      "setup": {
+        "tempRepo": "empty directory, no git init required"
+      },
+      "steps": [
+        "create_dir(repo, \"src/nested\"); create_dir(repo, \"other\")",
+        "create_file(repo, \"src/a.ts\"); create_file(repo, \"other/a.ts\")",
+        "move_path(repo, \"src/a.ts\", \"src/nested\")",
+        "move_path(repo, \"src/nested/a.ts\", \"\")",
+        "move_path(repo, \"other/a.ts\", \"\")",
+        "move_path(repo, \"src\", \"src\")",
+        "move_path(repo, \"src\", \"src/nested\")",
+        "move_path(repo, \"other/a.ts\", \"other\")",
+        "move_path(repo, \"a.ts\", \"..\")"
+      ],
+      "expected": {
+        "moveIntoSiblingFolder": { "result": "Ok(\"src/nested/a.ts\")", "fileExistsAt": "src/nested/a.ts" },
+        "moveBackToRoot": { "result": "Ok(\"a.ts\")", "fileExistsAt": "a.ts" },
+        "moveOntoExistingName": { "result": "Err(\"a.ts already exists here\")", "sourceStillAt": "other/a.ts" },
+        "moveFolderIntoItself": { "result": "Err(\"cannot move a folder into itself\")" },
+        "moveFolderIntoOwnDescendant": { "result": "Err(\"cannot move a folder into itself\")", "srcNestedStillDir": true },
+        "moveOntoOwnCurrentLocation": { "result": "Ok(\"other/a.ts\")", "note": "no-op success, not an error" },
+        "moveOutsideRepoViaDotDot": { "result": "Err(\"path escapes the repository root\")", "note": "the dest_dir argument '..' is resolved via resolve_within_repo, which canonicalizes repo.join('..') to the repo's parent directory and rejects it because it does not start_with the canonicalized repo root" }
+      },
+      "notes": "Exercises move_path's full guard chain: destination-collision refusal, self/descendant-containment refusal via canonical-path starts_with, current-location no-op, and repo-boundary refusal via resolve_within_repo on the destination argument '..'."
+    },
+    {
+      "id": "rejects-duplicates-empty-traversal",
+      "setup": {
+        "tempRepo": "empty directory, no git init required"
+      },
+      "steps": [
+        "create_file(repo, \"dup.txt\")",
+        "create_file(repo, \"dup.txt\") again",
+        "create_dir(repo, \"dir\")",
+        "create_dir(repo, \"dir\") again",
+        "create_file(repo, \"   \")",
+        "create_file(repo, \"../escaped.txt\")",
+        "create_dir(repo, \"../escaped\")"
+      ],
+      "expected": {
+        "firstCreateFile": "Ok(())",
+        "duplicateCreateFile": { "error": "dup.txt already exists" },
+        "firstCreateDir": "Ok(())",
+        "duplicateCreateDir": { "error": "dir already exists" },
+        "blankName": { "error": "name cannot be empty" },
+        "dotDotCreateFile": { "error": "invalid path: ../escaped.txt" },
+        "dotDotCreateDir": { "error": "invalid path: ../escaped" },
+        "noFileEscapedParentDir": true
+      },
+      "notes": "Exercises resolve_new_path: rel_path.trim() is checked for emptiness first, so an all-whitespace name ('   ') hits 'name cannot be empty' rather than the component check. A '..' component is rejected in the second check because it is not Component::Normal (the 'invalid path: {rel_path}' message interpolates the original, untrimmed argument) — independent of whether anything canonicalizes, since the target doesn't exist yet. This is the creation-time guard, distinct from resolve_within_repo used by read/write/move."
+    }
+  ]
+}

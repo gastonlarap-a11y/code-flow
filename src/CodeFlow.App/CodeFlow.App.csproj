@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The sidecar. One executable holding every feature, organised by feature folder — not a
+    library plus a host. AGENTS.md rejects layer boundaries introduced for their own sake,
+    and a Core/Host split would be exactly that: one consumer on either side.
+
+    The rule that keeps this honest: Program.cs contains composition and transport only. Every
+    command handler body lives in its feature folder.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CodeFlow</RootNamespace>
+    <AssemblyName>codeflow-core</AssemblyName>
+
+    <!-- The renderer and shell own the UI; this process never writes to a console the user sees,
+         but stdout/stderr stay free for logs because the IPC transport is a pipe, not stdio. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Required by [LibraryImport], which the credential store uses to reach Security.framework
+         on macOS and advapi32 on Windows. .NET has no cross-platform credential API, so P/Invoke
+         is not a shortcut here — it is the only route (docs/business-rules/90-ambiguities.md). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      The two runtimes `scripts/build-app.sh` publishes, declared rather than left to the command
+      line — because `RestorePackagesWithLockFile` is on and the lock file has to know about them.
+
+      Without this, publishing for a runtime meets a RID graph the lock does not carry, writes it
+      in, and leaves the working tree dirty after every macOS build. Turning the lock off for that
+      publish is not an option: NuGet uses a lock file whenever one exists in the project directory,
+      whatever the property says. So the lock is made complete instead, which also means CI's locked
+      mode now verifies the published graphs and not only the runtime-agnostic one.
+
+      Adding a RID here is not free — every restore resolves its graph — so this lists exactly what
+      is published today and nothing speculative.
+    -->
+    <RuntimeIdentifiers>osx-arm64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="LibGit2Sharp" />
+    <PackageReference Include="Porta.Pty" />
+    <PackageReference Include="MQTTnet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The built-in prompts ship as files, not C# string literals, so nothing passes through
+      escaping. They are a byte-level contract with two parsers; see Ai/Prompts.cs.
+    -->
+    <EmbeddedResource Include="Ai/Prompts/*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The test project reaches internals rather than the app widening its surface to suit tests.
+      The migration runner and schema are implementation details of storage; making them public
+      would invite a caller that skips Database.Open and its ordering guarantees.
+    -->
+    <InternalsVisibleTo Include="CodeFlow.Tests" />
+  </ItemGroup>
+
+</Project>

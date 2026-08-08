@@ -1,0 +1,19 @@
+# pnpm 10 moved these settings out of `package.json`; this file is where they live now. This
+# package is not a workspace root — the file exists only because it is the one place pnpm reads
+# them from.
+
+overrides:
+  # monaco-editor bundles its own dompurify, and that copy is the vulnerable one — the direct
+  # dependency in package.json is already current. Monaco uses it to sanitize the markdown it
+  # renders in hovers and suggestion details, which is content from the repository being edited,
+  # so this is a real XSS surface inside the editor rather than a transitive-only concern
+  # (GHSA-cmwh-pvxp-8882). Same major line, so there is no API break to absorb.
+  dompurify: ^3.4.13
+
+# pnpm refuses to run a dependency's install scripts unless it is approved here. That approval used
+# to live in `node_modules/.modules.yaml`, which is not version-controlled — so it survived only
+# until someone deleted the directory, and then `pnpm install` exits 1 with nothing to say the
+# grant had ever been made. esbuild fetches its platform binary in a postinstall and vite does not
+# run without it.
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,143 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/Diagnostics/Debugger.cs",
+  "sourceLines": "562-635",
+  "extractedFrom": [
+    "windows_paths_become_file_urls_and_back",
+    "posix_paths_survive_the_round_trip",
+    "a_runtime_internal_url_is_left_alone",
+    "paused_frames_carry_one_based_lines_and_their_local_scope",
+    "the_inspect_brk_halt_is_recognized_but_a_step_never_is",
+    "an_anonymous_frame_still_gets_a_name",
+    "values_render_the_way_a_variables_panel_wants_them"
+  ],
+  "kind": "vector",
+  "unit": "V8 Inspector path/line translation and payload-shape mapping: file_url, url_to_path, parse_paused, is_entry_break, render_value",
+  "cases": [
+    {
+      "id": "file-url-windows-drive-path-round-trips",
+      "unit": "file_url; url_to_path",
+      "input": { "path": "C:\\repo\\src\\app.js" },
+      "expected": {
+        "fileUrl": "file:///C:/repo/src/app.js",
+        "roundTrippedPath": "C:\\repo\\src\\app.js"
+      },
+      "notes": "file_url backslash-normalizes to forward slashes and prefixes 'file:///' (no extra slash before the drive letter). url_to_path detects a drive letter (rest.as_bytes()[1] == b':') after stripping 'file:///' and converts every '/' back to '\\\\'."
+    },
+    {
+      "id": "file-url-posix-path-round-trips",
+      "unit": "file_url; url_to_path",
+      "input": { "path": "/home/dev/app.js" },
+      "expected": {
+        "fileUrl": "file:///home/dev/app.js",
+        "roundTrippedPath": "/home/dev/app.js"
+      },
+      "notes": "A POSIX path already starts with '/', so file_url does not insert a second one. url_to_path's non-drive-letter branch re-adds the leading '/' that stripping 'file:///' consumed."
+    },
+    {
+      "id": "url-to-path-leaves-runtime-internal-urls-alone",
+      "unit": "url_to_path",
+      "input": { "url": "node:internal/modules/cjs/loader" },
+      "expected": { "path": "node:internal/modules/cjs/loader" },
+      "notes": "Doesn't start with 'file:///', so the None branch returns the input unchanged — this is how a paused frame inside Node's own runtime internals gets a file value the UI can display (but not open in the editor)."
+    },
+    {
+      "id": "paused-frame-line-is-cdp-zero-based-plus-one",
+      "unit": "parse_paused",
+      "input": {
+        "params": {
+          "reason": "other",
+          "callFrames": [
+            {
+              "callFrameId": "frame-1",
+              "functionName": "compute",
+              "url": "file:///C:/repo/app.js",
+              "location": { "lineNumber": 4 },
+              "scopeChain": [
+                { "type": "global", "object": { "objectId": "global-1" } },
+                { "type": "local", "object": { "objectId": "local-1" } }
+              ]
+            }
+          ]
+        },
+        "scripts": {}
+      },
+      "expected": {
+        "reason": "other",
+        "frames": [
+          {
+            "id": "frame-1",
+            "name": "compute",
+            "file": "C:\\repo\\app.js",
+            "line": 5,
+            "scope_id": "local-1"
+          }
+        ]
+      },
+      "notes": "CDP said lineNumber 4 (0-based); the app-facing StackFrame.line is 5 (1-based) — the +1 happens once, here, and nowhere else. scope_id prefers the first scope whose type is 'local' over the 'global' scope that precedes it in the chain."
+    },
+    {
+      "id": "anonymous-frame-still-gets-a-display-name",
+      "unit": "parse_paused",
+      "input": {
+        "params": {
+          "reason": "step",
+          "callFrames": [
+            { "callFrameId": "f", "functionName": "", "url": "", "location": { "lineNumber": 0 } }
+          ]
+        },
+        "scripts": {}
+      },
+      "expected": {
+        "reason": "step",
+        "frames": [
+          { "id": "f", "name": "(anonymous)", "file": "", "line": 1, "scope_id": null }
+        ]
+      },
+      "notes": "An empty functionName is treated the same as a missing one and falls back to the literal string '(anonymous)'. An empty url with no scriptId->url entry in scripts resolves to the empty string, which url_to_path passes through unchanged since it doesn't start with 'file:///'."
+    },
+    {
+      "id": "entry-break-recognition",
+      "unit": "is_entry_break",
+      "input": {
+        "cases": [
+          { "isFirst": true, "params": { "reason": "Break on start", "hitBreakpoints": [] } },
+          { "isFirst": false, "params": { "reason": "Break on start", "hitBreakpoints": [] } },
+          { "isFirst": true, "params": { "reason": "step", "hitBreakpoints": [] } },
+          { "isFirst": true, "params": { "reason": "other", "hitBreakpoints": ["bp-1"] } },
+          { "isFirst": true, "params": { "reason": "exception" } }
+        ]
+      },
+      "expected": { "results": [true, false, false, false, false] },
+      "notes": "Only the FIRST pause of a session can be the --inspect-brk entry halt, and only when its reason is exactly 'Break on start' (current V8) or 'other' (older Node) AND it hit no configured breakpoint. Case 2 shows the same params are no longer recognized once is_first is false (a later coincidental 'Break on start'/'other' with no hits, though unlikely in practice, would NOT be swallowed). Case 4 shows a real breakpoint hit on the very first pause is never mistaken for the entry break even though it is technically the first pause. Case 5 has no hitBreakpoints field at all — missing is treated as empty (unwrap_or(true)) — but it's still rejected because 'exception' isn't one of the two recognized reasons."
+    },
+    {
+      "id": "render-value-string",
+      "unit": "render_value",
+      "input": { "type": "string", "value": "hi" },
+      "expected": { "value": "\"hi\"" },
+      "notes": "Strings are wrapped in literal double quotes for display; the quoting is added by render_value, not present in CDP's own value field."
+    },
+    {
+      "id": "render-value-number",
+      "unit": "render_value",
+      "input": { "type": "number", "value": 42 },
+      "expected": { "value": "42" },
+      "notes": "Falls through to the default branch: the raw CDP 'value' field, JSON-stringified."
+    },
+    {
+      "id": "render-value-undefined",
+      "unit": "render_value",
+      "input": { "type": "undefined" },
+      "expected": { "value": "undefined" },
+      "notes": "Literal string, independent of any 'value'/'description' field being present."
+    },
+    {
+      "id": "render-value-object-uses-description-and-keeps-object-id",
+      "unit": "render_value",
+      "input": { "type": "object", "description": "Array(3)", "objectId": "o-1" },
+      "expected": { "value": "Array(3)", "object_id": "o-1" },
+      "notes": "Objects render as their CDP 'description' (falling back to the literal 'Object' if description is absent, not exercised by this vector); objectId is carried straight through as the expandable marker."
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "codeflow-fixture-v1",
+  "sourceFile": "src/CodeFlow.App/ApiClient/MqttEndpoint.cs",
+  "sourceLines": "229-513",
+  "extractedFrom": [
+    "parses_schemes_and_default_ports",
+    "rejects_what_it_cannot_do",
+    "generates_a_client_id_only_when_missing",
+    "clamps_out_of_range_qos"
+  ],
+  "kind": "vector",
+  "unit": "several pure functions in the implementation — see each case's own \"unit\" field",
+  "cases": [
+    {
+      "id": "parse-endpoint-schemes-and-default-ports",
+      "unit": "parse_endpoint",
+      "input": {
+        "urls": [
+          "mqtt://broker.example.com",
+          "mqtts://broker.example.com",
+          "broker.example.com:1884",
+          "mqtt://[::1]:1885",
+          "ssl://broker.example.com:8884/mqtt"
+        ]
+      },
+      "expected": {
+        "results": [
+          { "host": "broker.example.com", "port": 1883, "tls": false },
+          { "host": "broker.example.com", "port": 8883, "tls": true },
+          { "host": "broker.example.com", "port": 1884, "tls": false },
+          { "host": "::1", "port": 1885 },
+          { "port": 8884, "tls": true }
+        ]
+      },
+      "notes": "No scheme (a bare 'host:port') is accepted and treated as plain TCP. IPv6 hosts use bracket notation. A trailing path is tolerated and ignored."
+    },
+    {
+      "id": "parse-endpoint-rejections",
+      "unit": "parse_endpoint",
+      "input": {
+        "urls": [
+          "ws://broker.example.com:8083/mqtt",
+          "wss://broker.example.com/mqtt",
+          "http://broker.example.com",
+          "mqtt://broker.example.com:not-a-port",
+          "   "
+        ]
+      },
+      "expected": { "all_error": true },
+      "notes": "ws/wss are explicitly rejected (MQTT-over-WebSocket needs a the MQTT client feature this build doesn't enable) rather than silently falling back to plain TCP on the wrong port."
+    },
+    {
+      "id": "client-id-generation",
+      "unit": "resolve_client_id",
+      "input": { "calls": [" device-7 ", ""] },
+      "expected": {
+        "results": [
+          "device-7",
+          { "pattern": "starts_with('codeflow-') && length == 17" }
+        ]
+      },
+      "notes": "The generated id's random 8-hex-digit suffix is non-deterministic (rand::random::<u32>()), so only the prefix and total length are checked — same as the original test itself."
+    },
+    {
+      "id": "qos-clamping",
+      "unit": "clamp_qos; v4_qos; v5_qos",
+      "input": {
+        "clamp_qos_calls": [0, 2, 9],
+        "v4_qos_call": 9,
+        "v5_qos_call": 1
+      },
+      "expected": {
+        "clamp_qos_results": [0, 2, 0],
+        "v4_qos_result": "AtMostOnce",
+        "v5_qos_result": "AtLeastOnce"
+      },
+      "notes": "Any QoS > 2 clamps to 0 (AtMostOnce) silently, applied uniformly across publish/subscribe/last-will and both protocol versions."
+    }
+  ]
+}

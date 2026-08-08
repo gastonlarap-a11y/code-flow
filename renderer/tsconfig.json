@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    // ES2022 rather than ES2020, which is the shell's target too. Pulled forward from F3.3 for one
+    // concrete reason: `new Error(message, { cause })` is ES2022, and `preserve-caught-error` --
+    // enabled by ESLint 10's recommended set -- requires it wherever a caught error is rethrown as
+    // a different one. Nothing is emitted from here (`noEmit`), and Electron 43's Chromium is far
+    // past both.
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting — mirrors the shell's tsconfig (F3.3): the 55k-LOC package should not be checked
+       more loosely than the 1k-LOC one. */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

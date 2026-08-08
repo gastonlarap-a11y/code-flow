@@ -22,7 +22,7 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
 - Shell: `pnpm -C shell test` · Renderer: `pnpm -C renderer typecheck` · `pnpm -C renderer test`
 - Lint: `pnpm -C renderer lint` · `pnpm -C shell lint` (ESLint flat config; warnings do not fail)
 - Smoke: `dotnet run --project src/CodeFlow.App -- --smoke-test`
-- Supply chain (`release.sh` runs these; no CI does any more): `dotnet list package --vulnerable
+- Supply chain (`ci.yml`'s `test` job and `release.sh` both run these): `dotnet list package --vulnerable
   --include-transitive` · `pnpm -C shell|renderer audit --audit-level moderate`
 - Package: `scripts/build-app.sh mac|win [--dir]` · `.dmg` alone: `scripts/build-dmg.sh` (builds and
   hashes it, touches no git state)
@@ -35,15 +35,22 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
   local binding.
 
 ## Rules
-- **No CI verifies a pull request.** `ci-web.yml` and `ci-sidecar.yml` are parked, commented out, in
-  `.github/workflows-disabled/` — outside that directory GitHub never reads them (their headers say
-  why, and how to restore them). `release.yml` is the only workflow left and it builds the Windows
-  installer without running a single test. The suites above are the only gate, and `release.sh` is
-  what enforces them. Nothing is "waiting for CI to catch it". The four Windows-exclusive tests
-  (`CredentialStoreTests` and company) now run nowhere at all.
-- **Never leave a disabled workflow inside `.github/workflows/`.** A file there with no `on:` and no
-  `jobs:` is an *invalid* workflow, not an absent one: GitHub fails it on every push and marks the
-  commit red through a failed check suite. Disabling means moving the file out of that directory.
+- **One workflow, `.github/workflows/ci.yml`, is the whole pipeline**: `test` → `gate` → `draft` →
+  `installers` → `publish`, chained with `needs:`. It runs on every pull request and every push to
+  `main`. Three separate workflows preceded it and fired independently, which is why nothing could
+  gate anything; do not add a second workflow, add a job.
+- **The `test` job runs on Windows, and moving it to Linux breaks it.** `CredentialStore` throws on
+  Unix by design, so every test touching a credential fails there. Windows is also where the four
+  Windows-exclusive tests run at all.
+- **A version bump is the act of releasing.** `gate` publishes when `shell/package.json`'s version
+  has no release yet, and stops otherwise — so a push to `main` either runs the suites and ends, or
+  builds both installers and publishes. No tag is pushed by hand.
+- **The release is a draft until both installers are in it.** `publish` refuses to flip it unless the
+  `.dmg`, the `.exe` and both `.sha256` files are present, because `UpdateService` cannot install an
+  artefact whose digest is missing.
+- Actions minutes are unmetered here because the repository is **public** — macOS included, which is
+  what makes the `.dmg` a CI artefact rather than something built by hand. `scripts/release.sh` still
+  works as the manual path.
 - Behaviours listed in `docs/business-rules/91-known-bugs.md` are **preserved on purpose**. Never
   "fix" one silently — existing 1.7.2 installs and the renderer depend on them.
 - Literals in `docs/business-rules/13-cross-language-contracts.md` are byte-level contracts between

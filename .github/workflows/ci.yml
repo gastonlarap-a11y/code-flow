@@ -31,12 +31,21 @@ permissions:
   contents: write
 
 jobs:
-  # Everything the old `ci-web` and `ci-sidecar` did, in one job on Linux. They ran on `windows-2025`
-  # to cover the platform nobody here can test by hand; that cost double the minutes and bought a
-  # coverage claim the four Windows-exclusive tests never actually delivered on Linux either. Linux
-  # starts faster, and the Windows installer is still built — and therefore still compiled — below.
+  # Everything the old `ci-web` and `ci-sidecar` did, in one job.
+  #
+  # Windows, not Linux, and that is not a preference. `CredentialStore` throws on Unix by design —
+  # "CodeFlow targets Windows and macOS; it will not fall back to storing secrets in plaintext" — so
+  # every test that touches a credential fails there, which is the product working as specified
+  # rather than a CI problem to route around (`91-known-bugs.md`, `BUG-SEC-a`). Windows also runs the
+  # four Windows-exclusive tests that a macOS developer machine skips, and which therefore ran
+  # nowhere while this job did not exist.
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    # Every `run` below is POSIX shell; without this, Windows would hand them to PowerShell, where
+    # `grep`, `<<<` and `[[ ]]` do not exist.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

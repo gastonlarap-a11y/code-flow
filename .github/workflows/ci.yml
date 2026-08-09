@@ -33,16 +33,27 @@ permissions:
 jobs:
   # Everything the old `ci-web` and `ci-sidecar` did, in one job.
   #
-  # Windows, not Linux, and that is not a preference. `CredentialStore` throws on Unix by design —
-  # "CodeFlow targets Windows and macOS; it will not fall back to storing secrets in plaintext" — so
-  # every test that touches a credential fails there, which is the product working as specified
-  # rather than a CI problem to route around (`91-known-bugs.md`, `BUG-SEC-a`). Windows also runs the
-  # four Windows-exclusive tests that a macOS developer machine skips, and which therefore ran
-  # nowhere while this job did not exist.
+  # macOS, and the other two were each tried and rejected on evidence:
+  #
+  # - **Linux** fails outright. `CredentialStore` throws on Unix by design — "CodeFlow targets
+  #   Windows and macOS; it will not fall back to storing secrets in plaintext" — so every test that
+  #   reaches a credential fails. That is the product working as `10-security.md` specifies, and
+  #   `91-known-bugs.md` (`BUG-SEC-a`) already recorded that Linux is not a target.
+  # - **Windows** fails differently and worse. `AiIpcTests` writes a `fake-claude` engine as a POSIX
+  #   script and executes it; Windows answers "not a valid application for this OS platform". Then
+  #   the run does not even end: on `windows-2025-vs2026` the test host died and MSBuild waited on
+  #   it for two and a half hours (`MSB4166: Child node exited prematurely`) until it was cancelled
+  #   by hand. `ci-sidecar.yml` did run here once, on an older image; it does not any more.
+  #
+  # macOS is where the suite is actually green — 1411 passed, 9 skipped — and it is free on a public
+  # repository. The cost is honest and unchanged from before: the four Windows-exclusive tests
+  # (`CredentialStoreTests` and company) skip here, so they still run nowhere. `installers` below
+  # does compile the whole tree on Windows, so a Windows *build* break is still caught.
   test:
-    runs-on: windows-latest
-    # Every `run` below is POSIX shell; without this, Windows would hand them to PowerShell, where
-    # `grep`, `<<<` and `[[ ]]` do not exist.
+    runs-on: macos-latest
+    # A hung job runs to the six-hour ceiling by default, which is how one cancelled by hand cost an
+    # afternoon. The suite takes minutes; anything near this limit is a hang, not slowness.
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -131,6 +142,7 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       publish: ${{ steps.check.outputs.publish }}
       version: ${{ steps.check.outputs.version }}
@@ -175,6 +187,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -206,6 +219,9 @@ jobs:
           - os: windows-latest
             target: win
     runs-on: ${{ matrix.os }}
+    # Packaging is the long pole — a full sidecar publish plus the renderer bundle plus the
+    # installer itself. Measured at roughly seven minutes; this is a hang detector, not a budget.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -271,6 +287,7 @@ jobs:
   publish:
     needs: [gate, installers]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

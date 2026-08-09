@@ -157,11 +157,11 @@ Verified on macOS arm64. **Windows is no longer verified by anything.** For a wh
 every pull request — 1 167 tests on a `windows-2025` runner, because there is still no Windows
 machine here — and that was already narrower than it sounded: the suite passing is not the same as
 the application having been *used* there. Nobody has opened the window, typed in the terminal or run
-a review on Windows. What CI does establish is narrower and worth stating exactly: `ci.yml` runs the
-whole sidecar suite on a Windows runner — including the four Windows-exclusive tests
-(`CredentialStoreTests` and company) that a macOS machine skips and that therefore run nowhere else
-— and builds the installer there. The suite passing is not the same as the application having been
-used.
+a review on Windows. What CI establishes is narrower and worth stating exactly: `ci.yml` builds the
+Windows installer on a Windows runner, so the whole tree still has to *compile* there. It does not
+run the suite there — that runs on macOS, for the reasons above — so the four Windows-exclusive tests
+(`CredentialStoreTests` and company) skip on every machine that touches this project and are covered
+by nothing.
 
 The first run found three, one of them a real leak in shipped code: every rendered Azure diff left
 its throwaway repository behind, because git writes loose objects read-only and Windows refuses to
@@ -323,10 +323,10 @@ pnpm -C renderer typecheck
 ```
 
 `.github/workflows/ci.yml` runs all four — plus both lints and both dependency audits — on every pull
-request and every push to `main`, in one job **on Windows**. Linux is not an option: `CredentialStore`
-refuses to run there rather than keeping secrets in plaintext, so every test that touches a
-credential fails on it. Windows is also the only place the four Windows-exclusive tests execute at
-all, since a macOS machine skips them.
+request and every push to `main`, in one job **on macOS**. The other two runners were tried and
+neither works: Linux fails because `CredentialStore` refuses to run there rather than keep secrets in
+plaintext, and Windows fails because the AI tests execute a POSIX `fake-claude` script it cannot run.
+macOS is where the suite is green, and it is free on a public repository.
 
 It is a single workflow whose stages chain with `needs:`, so a push produces one run rather than
 several racing each other, and the installers are only built once the suites have passed. Running

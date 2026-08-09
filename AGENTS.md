@@ -39,9 +39,12 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
   `installers` → `publish`, chained with `needs:`. It runs on every pull request and every push to
   `main`. Three separate workflows preceded it and fired independently, which is why nothing could
   gate anything; do not add a second workflow, add a job.
-- **The `test` job runs on Windows, and moving it to Linux breaks it.** `CredentialStore` throws on
-  Unix by design, so every test touching a credential fails there. Windows is also where the four
-  Windows-exclusive tests run at all.
+- **The `test` job runs on macOS, and the other two runners were tried and rejected.** Linux: every
+  credential test fails, because `CredentialStore` throws on Unix by design. Windows: `AiIpcTests`
+  executes a POSIX `fake-claude` script the platform cannot run, and the test host then hung until
+  the job was cancelled. Do not "simplify" this to `ubuntu-latest`.
+- **Every job carries `timeout-minutes`.** Without one a hang runs to Actions' six-hour ceiling; that
+  is how a single stuck run cost an afternoon.
 - **A version bump is the act of releasing.** `gate` publishes when `shell/package.json`'s version
   has no release yet, and stops otherwise — so a push to `main` either runs the suites and ends, or
   builds both installers and publishes. No tag is pushed by hand.

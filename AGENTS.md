@@ -22,7 +22,7 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
 - Shell: `pnpm -C shell test` · Renderer: `pnpm -C renderer typecheck` · `pnpm -C renderer test`
 - Lint: `pnpm -C renderer lint` · `pnpm -C shell lint` (ESLint flat config; warnings do not fail)
 - Smoke: `dotnet run --project src/CodeFlow.App -- --smoke-test`
-- Supply chain (`ci.yml`'s `test` job and `release.sh` both run these): `dotnet list package --vulnerable
+- Supply chain (`release.sh` runs these; no CI does): `dotnet list package --vulnerable
   --include-transitive` · `pnpm -C shell|renderer audit --audit-level moderate`
 - Package: `scripts/build-app.sh mac|win [--dir]` · `.dmg` alone: `scripts/build-dmg.sh` (builds and
   hashes it, touches no git state)
@@ -35,22 +35,21 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
   local binding.
 
 ## Rules
-- **One workflow, `.github/workflows/ci.yml`, is the whole pipeline**: `test` → `gate` → `draft` →
-  `installers` → `publish`, chained with `needs:`. It runs on every pull request and every push to
-  `main`. Three separate workflows preceded it and fired independently, which is why nothing could
-  gate anything; do not add a second workflow, add a job.
-- **The `test` job runs on macOS, and the other two runners were tried and rejected.** Linux: every
-  credential test fails, because `CredentialStore` throws on Unix by design. Windows: `AiIpcTests`
-  executes a POSIX `fake-claude` script the platform cannot run, and the test host then hung until
-  the job was cancelled. Do not "simplify" this to `ubuntu-latest`.
-- **Every job carries `timeout-minutes`.** Without one a hang runs to Actions' six-hour ceiling; that
-  is how a single stuck run cost an afternoon.
+- **No CI runs a test.** `.github/workflows/ci.yml` builds the two installers and publishes them;
+  that is all it does. The suites above are the only gate and they run on your machine, with
+  `scripts/release.sh` enforcing them before a manual release. A red pipeline means "the installer
+  did not build", never "the code is wrong" — nothing is waiting for CI to catch a regression.
+- **One workflow, stages chained with `needs:`**: `gate` → `draft` → `installers` → `publish`. It
+  runs on pushes to `main` only, never on a pull request: with no suites there is nothing for a pull
+  request to check. Do not add a second workflow, add a job.
 - **A version bump is the act of releasing.** `gate` publishes when `shell/package.json`'s version
-  has no release yet, and stops otherwise — so a push to `main` either runs the suites and ends, or
-  builds both installers and publishes. No tag is pushed by hand.
+  has no release yet, and stops in seconds otherwise. No tag is pushed by hand, and no automatic
+  version policy exists.
 - **The release is a draft until both installers are in it.** `publish` refuses to flip it unless the
   `.dmg`, the `.exe` and both `.sha256` files are present, because `UpdateService` cannot install an
   artefact whose digest is missing.
+- **Every job carries `timeout-minutes`.** Without one a hang runs to Actions' six-hour ceiling; that
+  is how a single stuck run cost an afternoon.
 - Actions minutes are unmetered here because the repository is **public** — macOS included, which is
   what makes the `.dmg` a CI artefact rather than something built by hand. `scripts/release.sh` still
   works as the manual path.

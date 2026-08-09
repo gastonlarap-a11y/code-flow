@@ -158,10 +158,9 @@ every pull request — 1 167 tests on a `windows-2025` runner, because there is 
 machine here — and that was already narrower than it sounded: the suite passing is not the same as
 the application having been *used* there. Nobody has opened the window, typed in the terminal or run
 a review on Windows. What CI establishes is narrower and worth stating exactly: `ci.yml` builds the
-Windows installer on a Windows runner, so the whole tree still has to *compile* there. It does not
-run the suite there — that runs on macOS, for the reasons above — so the four Windows-exclusive tests
-(`CredentialStoreTests` and company) skip on every machine that touches this project and are covered
-by nothing.
+Windows installer on a Windows runner, so the whole tree still has to *compile* there. It runs no
+tests anywhere, so the four Windows-exclusive tests (`CredentialStoreTests` and company) — which a
+macOS machine skips — are covered by nothing at all.
 
 The first run found three, one of them a real leak in shipped code: every rendered Azure diff left
 its throwaway repository behind, because git writes loose objects read-only and Windows refuses to
@@ -322,16 +321,12 @@ pnpm -C renderer test            # Vitest over the pure logic
 pnpm -C renderer typecheck
 ```
 
-`.github/workflows/ci.yml` runs all four — plus both lints and both dependency audits — on every pull
-request and every push to `main`, in one job **on macOS**. The other two runners were tried and
-neither works: Linux fails because `CredentialStore` refuses to run there rather than keep secrets in
-plaintext, and Windows fails because the AI tests execute a POSIX `fake-claude` script it cannot run.
-macOS is where the suite is green, and it is free on a public repository.
-
-It is a single workflow whose stages chain with `needs:`, so a push produces one run rather than
-several racing each other, and the installers are only built once the suites have passed. Running
-the four here as well is still worth the keystrokes: the feedback is immediate, and
-`scripts/release.sh` requires them locally before it will publish.
+**These four are the whole gate, and they run here — no workflow runs them.**
+`.github/workflows/ci.yml` builds the two installers and publishes them; it does not run a test, a
+lint or an audit, and a pull request carries no checks at all. That is a decision, not a gap: CI
+exists for the one thing a laptop cannot do, which is produce a Windows `.exe`. A red pipeline means
+the installer did not build. `scripts/release.sh` is what enforces the four before a manual release,
+and nothing else will catch a regression for you.
 
 The suite opens real sockets — that is the transport under test — and `dotnet test` itself needs a
 loopback listener to reach its test host. Under an agent sandbox that blocks local `bind()`, set

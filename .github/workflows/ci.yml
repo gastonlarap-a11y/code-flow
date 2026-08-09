@@ -1,62 +1,128 @@
-# The whole pipeline, in one file.
+# Builds the installers and publishes them. That is the whole job.
 #
-# It replaced three workflows that fired independently — `ci-web`, `ci-sidecar` and `release` — and
-# that independence was the problem: two of them started at once on every push, each re-doing the
-# other's setup, and neither could gate the third. Here every stage names what it needs, so a push
-# produces one run that walks test → gate → draft → installers → publish and stops at the first
-# thing that fails.
+# **No tests, no lints, no audits run here, and that is the decision rather than an omission.** They
+# run locally, and `scripts/release.sh` runs every one of them as a release gate before it will
+# publish anything by hand. CI exists here for the one thing a laptop cannot do on its own: produce
+# a Windows `.exe`. It produces the macOS `.dmg` alongside it because a public repository gets macOS
+# runners for free, which removes the last step that used to be manual.
 #
-# It exists at all because this repository is public. Actions minutes are unmetered on public
-# repositories for standard runners, macOS included — which is what makes the .dmg buildable here
-# rather than by hand on a laptop, and what made switching CI back on free.
+# The corollary is worth stating: a red pipeline means "the installer did not build", never "the code
+# is wrong". Nothing here will catch a broken test. Run the suites before you push.
+#
+# One workflow, stages chained with `needs:`, so a push produces one run that stops at the first
+# failure — not three racing each other, which is what the three workflows this replaced did.
 
 name: ci
 
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
-# Cancelling is right for a pull request, where a superseded run is only spending time. It is wrong
-# on `main`: the run that publishes a release must not be killed halfway by the next push, which
-# would leave a tag with some of its installers and no way to tell from the outside.
+# Deliberately not on `pull_request`. With no suites to run there is nothing for a pull request to
+# check, and building two installers to look at a diff is minutes spent on nothing.
+
+# Cancelling would be right for a check pipeline. It is wrong for this one: the run that publishes a
+# release must not be killed halfway by the next push, which would leave a tag holding some of its
+# installers and no way to tell from outside.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
-# Enough to create a release, a tag and upload assets. Nothing here needs more, and every third-party
-# action is pinned to a commit rather than a movable tag because they all run with this.
+# Enough to create a release, a tag and upload assets. Nothing here needs more, and every
+# third-party action is pinned to a commit rather than a movable tag because they all run with this.
 permissions:
   contents: write
 
 jobs:
-  # Everything the old `ci-web` and `ci-sidecar` did, in one job.
-  #
-  # macOS, and the other two were each tried and rejected on evidence:
-  #
-  # - **Linux** fails outright. `CredentialStore` throws on Unix by design — "CodeFlow targets
-  #   Windows and macOS; it will not fall back to storing secrets in plaintext" — so every test that
-  #   reaches a credential fails. That is the product working as `10-security.md` specifies, and
-  #   `91-known-bugs.md` (`BUG-SEC-a`) already recorded that Linux is not a target.
-  # - **Windows** fails differently and worse. `AiIpcTests` writes a `fake-claude` engine as a POSIX
-  #   script and executes it; Windows answers "not a valid application for this OS platform". Then
-  #   the run does not even end: on `windows-2025-vs2026` the test host died and MSBuild waited on
-  #   it for two and a half hours (`MSB4166: Child node exited prematurely`) until it was cancelled
-  #   by hand. `ci-sidecar.yml` did run here once, on an older image; it does not any more.
-  #
-  # macOS is where the suite is actually green — 1411 passed, 9 skipped — and it is free on a public
-  # repository. The cost is honest and unchanged from before: the four Windows-exclusive tests
-  # (`CredentialStoreTests` and company) skip here, so they still run nowhere. `installers` below
-  # does compile the whole tree on Windows, so a Windows *build* break is still caught.
-  test:
-    runs-on: macos-latest
-    # A hung job runs to the six-hour ceiling by default, which is how one cancelled by hand cost an
-    # afternoon. The suite takes minutes; anything near this limit is a hang, not slowness.
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
+  # Decides whether this push is a release, so the answer is computed once and the expensive jobs can
+  # simply ask. The rule is deliberately boring: publish when the version in `shell/package.json` has
+  # no release yet. A version bump *is* the act of releasing — every other push to `main` ends here
+  # in a few seconds — and it needs no tag pushed by hand and no automatic version policy.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./shell/package.json').version")"
+
+          # Validated before it goes anywhere near another `run:` block. This string reaches later
+          # jobs and ends up in shell commands; a `version` field is repository content, so treating
+          # it as trusted would make "merge a package.json" a way to run commands with this token.
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' is not a plain version number"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # The renderer carries the same number; a release built from a tree where the two disagree
+          # would ship a shell and a renderer claiming different versions.
+          renderer="$(node -p "require('./renderer/package.json').version")"
+          if [[ "$version" != "$renderer" ]]; then
+            echo "::error::shell is $version but renderer is $renderer"
+            exit 1
+          fi
+
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "v$version is already released — nothing to build"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "v$version has no release yet — building the installers"
+          fi
+
+  # The release is created as a draft *before* anything is built, so the two installer jobs have one
+  # place to upload into and neither has to create it. Two jobs racing to create the same release is
+  # the failure this avoids, and a draft is invisible to the app's update check until `publish`
+  # flips it.
+  draft:
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Through `env:` rather than interpolated into the script. `VERSION` is validated in `gate`,
+      # but keeping repository-derived values out of the command text is what makes that validation
+      # a second line of defence instead of the only one.
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          gh release create "v$VERSION" \
+            --draft \
+            --target "$SHA" \
+            --title "v$VERSION" \
+            --generate-notes
+
+  installers:
+    needs: [gate, draft]
+    strategy:
+      # The two platforms are genuinely independent and serialising them would double the wall clock
+      # for nothing. `fail-fast: false` so a Windows failure still leaves the macOS installer to look
+      # at rather than cancelling it mid-build.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+          - os: windows-latest
+            target: win
+    runs-on: ${{ matrix.os }}
+    # Packaging is the long pole — a full sidecar publish, the renderer bundle, then the installer.
+    # Measured at roughly seven minutes; this is a hang detector, not a budget. Without one, a job
+    # that wedges runs to Actions' six-hour ceiling, which has already cost an afternoon here.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -82,169 +148,8 @@ jobs:
             renderer/pnpm-lock.yaml
             shell/pnpm-lock.yaml
 
-      # `--locked-mode` fails on lock-file drift rather than quietly resolving something else, which
-      # is the whole point of committing `packages.lock.json`.
-      - name: Restore the sidecar
-        run: dotnet restore CodeFlow.slnx --locked-mode
-
-      - name: Build the sidecar
-        run: dotnet build CodeFlow.slnx --configuration Release --no-restore
-
-      - name: Test the sidecar
-        run: dotnet test CodeFlow.slnx --configuration Release --no-build
-
-      # `dotnet list package --vulnerable` reports through its exit code only when it cannot run, so
-      # the output has to be read. A hit anywhere in the transitive graph fails the job.
-      - name: Audit the NuGet graph
-        run: |
-          report="$(dotnet list package --vulnerable --include-transitive)"
-          echo "$report"
-          if grep -q "has the following vulnerable packages" <<<"$report"; then
-            echo "::error::a vulnerable NuGet package is in the graph"
-            exit 1
-          fi
-
-      - name: Test the shell
-        run: pnpm -C shell install --frozen-lockfile && pnpm -C shell test
-
-      - name: Lint the shell
-        run: pnpm -C shell lint
-
-      - name: Install the renderer
-        run: pnpm -C renderer install --frozen-lockfile
-
-      - name: Typecheck the renderer
-        run: pnpm -C renderer typecheck
-
-      - name: Lint the renderer
-        run: pnpm -C renderer lint
-
-      - name: Test the renderer
-        run: pnpm -C renderer test
-
-      - name: Build the renderer
-        run: pnpm -C renderer build
-
-      # Last, and blocking on purpose. These fail on advisories published after the code was written,
-      # so putting them ahead of the suites would let an unrelated disclosure hide a real test
-      # failure. Blocking a release on a known vulnerability is the intended behaviour.
-      - name: Audit the node dependencies
-        run: |
-          pnpm -C shell audit --audit-level moderate
-          pnpm -C renderer audit --audit-level moderate
-
-  # Decides whether this push is a release, so that the answer is computed once and the expensive
-  # jobs below can simply ask. The rule is deliberately boring: publish when the version in
-  # `shell/package.json` has no release yet. That means a version bump is the act of releasing —
-  # every other push to `main` stops after `test` — and it needs no tag pushed by hand and no
-  # automatic version policy nobody asked for.
-  gate:
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      publish: ${{ steps.check.outputs.publish }}
-      version: ${{ steps.check.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          version="$(node -p "require('./shell/package.json').version")"
-
-          # Validated before it goes anywhere near a `run:` block. This string reaches later jobs and
-          # ends up in shell commands; a `version` field is repository content, so treating it as
-          # trusted would make "merge a package.json" a way to run commands with this token.
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::'$version' is not a plain version number"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-          # The renderer carries the same number; a release built from a tree where they disagree
-          # would ship a shell and a renderer claiming different versions.
-          renderer="$(node -p "require('./renderer/package.json').version")"
-          if [[ "$version" != "$renderer" ]]; then
-            echo "::error::shell is $version but renderer is $renderer"
-            exit 1
-          fi
-
-          if gh release view "v$version" >/dev/null 2>&1; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "v$version is already released — nothing to publish"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "v$version has no release yet — publishing"
-          fi
-
-  # The release is created as a draft *before* anything is built, so the two installer jobs have one
-  # place to upload into and neither has to create it. Two jobs racing to create the same release is
-  # the failure this avoids, and a draft is invisible until the last job flips it.
-  draft:
-    needs: gate
-    if: needs.gate.outputs.publish == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Through `env:` rather than interpolated into the script. `VERSION` is validated in `gate`,
-      # but keeping repository-derived values out of the command text is the habit that makes the
-      # validation a second line of defence instead of the only one.
-      - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.gate.outputs.version }}
-          SHA: ${{ github.sha }}
-        run: |
-          gh release create "v$VERSION" \
-            --draft \
-            --target "$SHA" \
-            --title "v$VERSION" \
-            --generate-notes
-
-  installers:
-    needs: [gate, draft]
-    strategy:
-      # The two platforms genuinely are independent, and serialising them would double the wall clock
-      # for nothing. `fail-fast: false` so a Windows failure still leaves the macOS installer to look
-      # at rather than cancelling it mid-build.
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            target: mac
-          - os: windows-latest
-            target: win
-    runs-on: ${{ matrix.os }}
-    # Packaging is the long pole — a full sidecar publish plus the renderer bundle plus the
-    # installer itself. Measured at roughly seven minutes; this is a hang detector, not a budget.
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: global.json
-          cache: true
-          cache-dependency-path: "**/packages.lock.json"
-
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          package_json_file: shell/package.json
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: |
-            renderer/pnpm-lock.yaml
-            shell/pnpm-lock.yaml
-
       # `build-app.sh` installs both workspaces with `--frozen-lockfile` itself, so there is no
-      # separate install step here.
+      # separate install step. A lock file out of step with its package.json fails here.
       - name: Build the installer
         shell: bash
         run: ./scripts/build-app.sh ${{ matrix.target }}
@@ -254,9 +159,9 @@ jobs:
           # and `monaco-editor`, which splitting redistributes but does not shrink.
           NODE_OPTIONS: --max-old-space-size=6144
 
-      # `UpdateService.ExpectedDigestAsync` refuses to install an artefact that has no `.sha256`
-      # beside it, so this step is load-bearing rather than informational. One file per artefact
-      # rather than a shared SHA256SUMS: two jobs writing one file is a race.
+      # `UpdateService.ExpectedDigestAsync` refuses to install an artefact with no `.sha256` beside
+      # it, so this step is load-bearing rather than informational. One file per artefact rather than
+      # a shared SHA256SUMS: two jobs writing one file is a race.
       - name: Hash the installers
         shell: bash
         run: |
@@ -281,9 +186,9 @@ jobs:
           fi
           gh release upload "v$VERSION" "${files[@]}" --clobber
 
-  # Flips the draft only once both installers are in. Until this runs, the release does not exist as
-  # far as the app's update check is concerned — which is what keeps a half-uploaded release from
-  # ever being offered to a user.
+  # Flips the draft only once both installers are in. Until this runs the release does not exist as
+  # far as the app's update check is concerned, which is what keeps a half-uploaded release from ever
+  # being offered to a user.
   publish:
     needs: [gate, installers]
     runs-on: ubuntu-latest
@@ -297,9 +202,9 @@ jobs:
         run: |
           tag="v$VERSION"
 
-          # What the app looks for. `UpdateAssets.For` picks by extension and
-          # `ExpectedDigestAsync` needs the matching digest, so a release missing any of these four
-          # is one the updater cannot act on — better to fail here than to publish it.
+          # What the app looks for. `UpdateAssets.For` picks by extension and `ExpectedDigestAsync`
+          # needs the matching digest, so a release missing any of these four is one the updater
+          # cannot act on — better to fail here than to publish it.
           assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
           echo "$assets"
           for want in '\.dmg$' '\.dmg\.sha256$' '\-Setup\-.*\.exe$' '\-Setup\-.*\.exe\.sha256$'; do

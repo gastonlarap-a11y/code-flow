@@ -13,7 +13,7 @@ reading](#the-documentation-is-not-optional-reading).
 | Tool | Version | Pinned by |
 |---|---|---|
 | .NET SDK | 10.0.302 | `global.json` (`rollForward: latestPatch`) |
-| Node | 24 | `.github/workflows/release.yml` |
+| Node | 24 | `.github/workflows/ci.yml` |
 | pnpm | 11.20.0 | `packageManager` in `renderer/package.json` and `shell/package.json` |
 
 There is no `package.json` at the repository root — this is a .NET solution with two independent
@@ -59,9 +59,9 @@ Output lands in `dist-installers/`. The sidecar is published **self-contained**,
 running CodeFlow needs no .NET runtime — but it does need **Node on PATH**, because installing a
 skill shells out to `npx`.
 
-A macOS installer can only be built on macOS: the `.dmg` target depends on `hdiutil`. A Windows
-installer is built by `.github/workflows/release.yml` on a real Windows runner rather than here,
-which is also the only Windows this project has ever run on.
+A macOS installer can only be built on macOS: the `.dmg` target depends on `hdiutil`. Both
+installers are built by `.github/workflows/ci.yml` on their own runners, which is also the only
+Windows this project has ever run on. Building either here is for looking at it before it ships.
 
 Rebuilding a `.dmg` **deletes the previous one first** — only for the platform being built, and only
 after the renderer, shell and sidecar have all compiled, so a failed build never leaves the machine
@@ -123,8 +123,9 @@ The two installers come from two machines and neither can produce the other's, s
 assembled rather than built in one place. That script checks the tag against the version in
 `shell/package.json` (a mismatch produces an update the installed build reports as still available,
 forever), requires a clean working tree, builds the macOS `.dmg` locally, pushes the tag — which
-starts the Windows job in `.github/workflows/release.yml` — creates the GitHub release if the
-Windows job has not already, and uploads the `.dmg`. The Windows job attaches its own `.exe`.
+starts the pipeline in `.github/workflows/ci.yml` — creates the GitHub release if that pipeline has
+not already, and uploads the `.dmg`. It remains the manual path; the usual one is simply to merge a
+version bump to `main` and let `ci.yml` build and publish both installers.
 
 ## The documentation is not optional reading
 
@@ -156,10 +157,10 @@ Verified on macOS arm64. **Windows is no longer verified by anything.** For a wh
 every pull request — 1 167 tests on a `windows-2025` runner, because there is still no Windows
 machine here — and that was already narrower than it sounded: the suite passing is not the same as
 the application having been *used* there. Nobody has opened the window, typed in the terminal or run
-a review on Windows. Now that `ci-sidecar` is switched off, even the suite is gone: the four
-Windows-exclusive tests (`CredentialStoreTests` and company) skip on a macOS machine and run nowhere
-else, so a defect in Windows-specific behaviour waits for a user to find it again. Touching the
-credential store or the IPC transport is a reason to restore that workflow and run it once by hand.
+a review on Windows. What CI establishes is narrower and worth stating exactly: `ci.yml` builds the
+Windows installer on a Windows runner, so the whole tree still has to *compile* there. It runs no
+tests anywhere, so the four Windows-exclusive tests (`CredentialStoreTests` and company) — which a
+macOS machine skips — are covered by nothing at all.
 
 The first run found three, one of them a real leak in shipped code: every rendered Azure diff left
 its throwaway repository behind, because git writes loose objects read-only and Windows refuses to
@@ -320,12 +321,12 @@ pnpm -C renderer test            # Vitest over the pure logic
 pnpm -C renderer typecheck
 ```
 
-**These four are the whole gate, and they run here.** No workflow runs them on a pull request:
-`ci-sidecar.yml` and `ci-web.yml` are parked, commented out, in `.github/workflows-disabled/` — their
-headers hold the measured reason and the way back — and `release.yml`, the one workflow left, builds
-the Windows installer on a tag without running a test. A pull request therefore carries no checks at
-all, and there is nothing to wait for before merging one. `scripts/release.sh` is what enforces the
-four before anything is published.
+**These four are the whole gate, and they run here — no workflow runs them.**
+`.github/workflows/ci.yml` builds the two installers and publishes them; it does not run a test, a
+lint or an audit, and a pull request carries no checks at all. That is a decision, not a gap: CI
+exists for the one thing a laptop cannot do, which is produce a Windows `.exe`. A red pipeline means
+the installer did not build. `scripts/release.sh` is what enforces the four before a manual release,
+and nothing else will catch a regression for you.
 
 The suite opens real sockets — that is the transport under test — and `dotnet test` itself needs a
 loopback listener to reach its test host. Under an agent sandbox that blocks local `bind()`, set

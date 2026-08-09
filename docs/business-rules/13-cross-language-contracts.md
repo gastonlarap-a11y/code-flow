@@ -429,19 +429,18 @@ that is stripped at the bridge (`renderer/src/lib/bridge/host.ts`) and is not pa
 
 ---
 
-## The upstream document this contract depends on was supplied
+## Where the review contract comes from
 
-Four places cite rules as coming from an external `WF-PR-REVIEWER` document —
+Four places carry rules taken from the review runbook this engine was ported from —
 `src/CodeFlow.App/Review/ReviewMemory.cs` (the re-review reconciliation rules), `src/CodeFlow.App/Ai/AiOperations.cs` (the SonarQube-style
 taxonomy, A-E ratings and Quality Gate behind `DEFAULT_PR_REVIEW_STANDARD`), `src/CodeFlow.App/Ai/AiOperations.cs` (the
 review-level rules governing which severities survive) and `src/state/prStore.ts:37` (the review
 depth levels, default `completo`).
 
-`90-ambiguities.md` recorded it as unavailable. **It was supplied**, at
-`/Users/gaston/Documents/Git/WF-PR-REVIEWER` — a working tool rather than a document, whose runbook
-is `AGENTS.md` and whose rules live in `.claude/skills/pr-review/references/`. The taxonomy and the
-three level names in `Ai/Prompts/` come from its `report-standard.md`, which makes those literals
-authoritative rather than inferred.
+That runbook was consulted while porting and is not part of this repository. What matters here is
+already settled: the taxonomy and the three level names in `Ai/Prompts/` were transcribed from it,
+which makes those literals **authoritative rather than inferred** — they are a contract to preserve,
+not a guess to revisit. Everything needed to keep them correct is in this document.
 
 It is **not** copied into this repository: its `reviews/` directory holds real review history for
 client projects.

@@ -41,8 +41,8 @@ public sealed record MemoryFinding
     /// <c>DIVERGENCE-REVIEW-a</c>: a re-review assigns a stable id here, and
     /// <see cref="ReviewMemory.RenumberHeaders"/> rewrites the <c>F-NNN</c> the model printed so the
     /// two cannot drift apart. CodeFlow 1.7.2 does not do that — its markdown keeps the model's own
-    /// numbering while thread reuse keys on this — and WF-PR-REVIEWER's <c>report-standard.md</c>
-    /// §3.1 shows why that was never intended: there, an engine assigns the id and renders the
+    /// numbering while thread reuse keys on this — and the source runbook's report standard shows
+    /// why that was never intended: there, an engine assigns the id and renders the
     /// report, so a single source of truth is structural.
     /// </remarks>
     public string Id { get; init; } = "";
@@ -101,10 +101,10 @@ public sealed record MemoryFinding
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>DIVERGENCE-REVIEW-b</c>. WF-PR-REVIEWER records the level once per run, not per finding.
-    /// Without it, a re-review at a shallower level marks
+    /// <c>DIVERGENCE-REVIEW-b</c>. The source runbook records the level once per run, not per
+    /// finding. Without it, a re-review at a shallower level marks
     /// everything the shallower level does not look for as <see cref="Resolved"/> — it cannot tell
-    /// "fixed" from "not examined". WF-PR-REVIEWER's <c>report-standard.md</c> §2 says persistence
+    /// "fixed" from "not examined". Its report standard says persistence
     /// "always happens, at all three levels", but that is an instruction to the agent doing the
     /// judging, not a mechanism, so nothing enforced it. This is the mechanism, and it is a product
     /// decision the operator made.

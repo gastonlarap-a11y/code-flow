@@ -76,11 +76,15 @@ echo "==> installers"
 # across its .dmg and its .zip. Only this platform's artefacts are removed. The other platform's are
 # built somewhere else — `release.yml` builds Windows on a real runner — so a copy sitting here may
 # be the only one on this machine.
+#
+# The `.sha256` files are listed even though electron-builder never writes one: `build-dmg.sh` adds
+# it *after* this script has run, so nothing else was ever going to remove it. Leaving them out is
+# how eleven digests for installers that no longer exist — 1.7.5 through 1.12.2 — accumulated here.
 output="$root/dist-installers"
 
 case "$target" in
-  mac) stale=("$output"/*.dmg "$output"/*-mac.zip "$output"/*-mac.zip.blockmap "$output/mac-arm64") ;;
-  win) stale=("$output"/*.exe "$output"/*.exe.blockmap "$output/win-unpacked") ;;
+  mac) stale=("$output"/*.dmg "$output"/*.dmg.sha256 "$output"/*-mac.zip "$output"/*-mac.zip.blockmap "$output/mac-arm64") ;;
+  win) stale=("$output"/*.exe "$output"/*.exe.sha256 "$output"/*.exe.blockmap "$output/win-unpacked") ;;
 esac
 
 for artefact in "${stale[@]}"; do

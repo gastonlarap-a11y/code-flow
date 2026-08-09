@@ -63,7 +63,7 @@ percent-encoding.
 **Thirteen still open**, of the seventeen Phase 1 raised. Each is a question the source does not
 answer; none was resolved by guessing. Four have moved to the resolved table below: `AMBIGUOUS-WS-a`
 was settled by reading during the port, `AMBIGUOUS-PROV-b` closed as a deliberate divergence, and
-`AMBIGUOUS-REVIEW-a` / `AMBIGUOUS-REVIEW-b` closed once the `WF-PR-REVIEWER` document was supplied.
+`AMBIGUOUS-REVIEW-a` / `AMBIGUOUS-REVIEW-b` closed once the source review runbook was consulted.
 
 (This line read "Sixteen still open" for a while after those closures — a count kept by hand that the
 closures did not update. Anyone recounting should trust the tables, not this sentence.)
@@ -95,20 +95,18 @@ These cannot be settled from this tree at all; they need a live adapter, server 
 | `AMBIGUOUS-AI-a` | `05-ai-engines.md` | opencode's `fix_tools()` list is marked `TODO(verify)` in source and has no runtime effect — opencode has no allow-list flag to receive it. Are these its real tool names? |
 | `AMBIGUOUS-GIT-a` | `04-git.md` | `checkout_remote_tracking` silently reuses a pre-existing same-named local branch without fixing up its upstream. Reuse, reject, or re-point? |
 
-### ~~Blocked on a document that is not available~~ — the document was supplied
+### ~~Blocked on a document that is not available~~ — resolved against the source runbook
 
-Four places cite rules as coming from an external `WF-PR-REVIEWER` document —
-`src/CodeFlow.App/Review/ReviewMemory.cs` (`re-review.md`), `src/CodeFlow.App/Ai/AiOperations.cs` and `src/CodeFlow.App/Ai/AiOperations.cs` (the review taxonomy and
-level rules), and `src/state/prStore.ts:37` (the depth levels). `90-ambiguities.md` recorded it as
-living on a machine that is not available.
+Four places carry rules taken from the review runbook this engine was ported from —
+`src/CodeFlow.App/Review/ReviewMemory.cs` (re-review reconciliation), `src/CodeFlow.App/Ai/AiOperations.cs` and `src/CodeFlow.App/Ai/AiOperations.cs` (the review taxonomy and
+level rules), and `src/state/prStore.ts:37` (the depth levels). These were once recorded as blocked
+on a document nobody could read.
 
-**It was supplied**, and it is at `/Users/gaston/Documents/Git/WF-PR-REVIEWER`. It is not a
-document but a working tool — Python and PowerShell under `tools/`, with `AGENTS.md` as its
-canonical runbook and the rules under `.claude/skills/pr-review/references/`. The two files that
-bear on these entries are `report-standard.md` (taxonomy, levels, id assignment) and `re-review.md`
-(reconciliation). CodeFlow 1.7.2 repository's own `memory/wf-pr-reviewer-port.md` records that its
-methodology was already ported into the the sidecar code once, which is why the prompts under
-`Ai/Prompts/` match it.
+**They are no longer blocked.** The runbook was consulted and the two parts that bear on these
+entries — the report standard (taxonomy, levels, id assignment) and the reconciliation rules — were
+transcribed into this specification and into the prompts under `Ai/Prompts/`. The runbook itself is
+not part of this repository and does not need to be: the entries below record what it settled, which
+is what a future reader needs.
 
 **It is deliberately not copied into this repository.** Its `reviews/` directory holds real review
 history for client projects; that is not this repository's data to carry.
@@ -116,7 +114,7 @@ history for client projects; that is not this repository's data to carry.
 | Id | Document | Resolution |
 |---|---|---|
 | `AMBIGUOUS-REVIEW-a` | `07-review-pipeline.md` | **Answered: not intentional.** `report-standard.md` §3.1 has the model write a minimal JSON draft and an *engine* assign the `F-NNN` ids and render the report — one source of truth by construction, so the drift cannot arise there. It arrived when the port kept the model's free-written markdown and dropped the render step. Closed as `DIVERGENCE-REVIEW-a`: `ReviewMemory.RenumberHeaders` rewrites the header ids to the reconciled ones, checking the pairing rather than assuming it, and leaving the text untouched if it does not hold. |
-| `AMBIGUOUS-REVIEW-b` | `07-review-pipeline.md` | **Not answered by the document — closed as a product decision.** WF-PR-REVIEWER records no level per finding either; its `report-standard.md` §2 says persistence "always happens, at all three levels", which is an instruction to the reviewing agent, not a mechanism. So there was nothing to copy. The operator decided to close it: `MemoryFinding.Nivel` records the depth that last saw a finding, and a shallower re-review marks it `fuera_de_alcance` instead of `resuelto`. **This is a decision, not something 1.7.2 sanctions**, and it is recorded that way on purpose. |
+| `AMBIGUOUS-REVIEW-b` | `07-review-pipeline.md` | **Not answered by the document — closed as a product decision.** The source runbook records no level per finding either; its report standard says persistence "always happens, at all three levels", which is an instruction to the reviewing agent, not a mechanism. So there was nothing to copy. The operator decided to close it: `MemoryFinding.Nivel` records the depth that last saw a finding, and a shallower re-review marks it `fuera_de_alcance` instead of `resuelto`. **This is a decision, not something 1.7.2 sanctions**, and it is recorded that way on purpose. |
 
 ---
 

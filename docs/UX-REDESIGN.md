@@ -106,7 +106,7 @@ paired with size. Weights are the one consistent axis (`font-medium`/`font-semib
 
 ### I.6 Constraints any implementation must respect
 
-From `.claude/rules/renderer.md` and the code:
+From the renderer conventions in `AGENTS.md` and the code:
 1. `FileTree`/`CollectionTree` are virtualized; row height is seeded (`estimateSize: () => 24`,
    `FileTree.tsx:491`, `CollectionTree.tsx:476`). Density changes touch both flatten libs and
    their tests; nothing may assume rows are mounted.

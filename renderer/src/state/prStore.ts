@@ -35,7 +35,7 @@ export interface LinkPrSession {
   workspaceId: string;
 }
 
-/** Review depth, mirroring the WF-PR-REVIEWER levels. `completo` is the default. */
+/** Review depth, mirroring the source runbook's levels. `completo` is the default. */
 export type ReviewLevel = "basico" | "completo" | "ultra";
 
 /** Translates outside of React (this store isn't a component) using whatever language is

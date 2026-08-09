@@ -9,8 +9,8 @@ namespace CodeFlow.Tests.Review;
 /// <remarks>
 /// <c>DIVERGENCE-REVIEW-a</c>. The model writes its own numbering from <c>F-001</c> every run while
 /// <see cref="ReviewMemory.Reconcile"/> assigns stable ids separately, so the number in the markdown
-/// could name a different finding from the one a click acted on. WF-PR-REVIEWER's
-/// <c>report-standard.md</c> §3.1 has an engine assign ids and render the report — one source of
+/// could name a different finding from the one a click acted on. The source runbook's report
+/// standard has an engine assign ids and render the report — one source of
 /// truth by construction — which is what settled that the drift was never intended.
 /// </remarks>
 public sealed class ReviewMemoryRenumberTests

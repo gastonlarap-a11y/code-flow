@@ -72,9 +72,10 @@ This file is the index. The content lives in `business-rules/`.
 
 ## Open questions
 
-1. Can the **`WF-PR-REVIEWER` document** be supplied? Four places cite it as the source of the
-   re-review reconciliation rules, the review taxonomy and the depth levels. It would settle
-   `AMBIGUOUS-REVIEW-a` and `-b`.
+1. ~~Can the source review runbook be supplied?~~ **Settled.** It was consulted, and what it
+   governs — the re-review reconciliation rules, the review taxonomy and the depth levels — is
+   transcribed into `05-ai-engines.md`, `07-review-pipeline.md` and
+   `13-cross-language-contracts.md`. `AMBIGUOUS-REVIEW-a` and `-b` are closed.
 2. Should `C:\CodeFlow` be preserved? Changing it strands every existing Windows user's database
    and credentials, so removing the hardcoded path means writing a migration, not changing a
    constant.

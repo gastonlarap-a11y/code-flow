@@ -117,3 +117,56 @@ the full record):
 - **Path traversal into not-yet-existing files is refused.** Writing through `../` to a file
   that does not exist yet is rejected before anything touches disk, closing the one gap in the
   repository-containment guard (`BUG-FILE-a`).
+
+---
+
+## Before 2.0.0
+
+CodeFlow was developed in a private repository and released thirteen times between 2026-07-30 and
+2026-08-06. Opening the project restarted its history from a single commit and removed those
+releases, so what follows is the record those release notes held. The `#N` references still resolve
+— the pull requests survive — but the commits they merged do not.
+
+**v1.12.2** · 2026-08-06 — a release with no functional change of its own.
+
+**v1.12.1** · 2026-08-05 — pull errors stopped being misattributed, and a divergent merge no longer
+hangs waiting on an editor that has no terminal (#68).
+
+**v1.12.0** · 2026-08-05 — per-workspace git identities (#66); prompt instructions translated to
+English while the Spanish payload literals the parsers match on stayed byte-for-byte (#67).
+
+**v1.11.0** · 2026-08-04 — faster diffs in the commit graph and better stash handling (#65).
+
+**v1.10.0** · 2026-08-03 — the analyse run made readable, bounded and isolated (#59); the diff shaped
+for the model instead of flattened (#60); the pipe that swallowed a review and the copy button that
+lied (#61); `release.sh`, one command that cuts a release and verifies it landed (#62, #63); and the
+CI gate rewritten to ask the commit what ran rather than each workflow for its newest run (#64).
+
+**v1.9.1** · 2026-08-02 — the analyze tab on a clean tree, and a lock file every macOS build kept
+rewriting (#57).
+
+**v1.9.0** · 2026-08-02 — the UX redesign, phases A through D: design tokens and primitives (#49),
+tree row density as a preference (#50), navigation and modal shells (#51), layout and git surfaces
+(#52), the API shell and typography (#53), API panels, Settings, the AI panel, editor and git (#54),
+and a final pass that removed the guard's exemption list (#55).
+
+**v1.8.0** · 2026-08-01 — ESLint with `react-hooks/rules-of-hooks` as an error (#38); the bundle
+code-split (#39); tests for the sentinel prefixes, the API importers and the script runtime (#40–#42);
+store and component splits with tree virtualization (#43); TypeScript 6, Vite 8, a hardened tsconfig
+and NuGet lock files (#44); and six 1.7.2 legacy bugs closed (#46).
+
+**v1.7.7** · 2026-07-31 — `useDialog` called before the early return rather than after it (#37).
+
+**v1.7.6** · 2026-07-31 — the Windows artefacts renamed so the digest check can find them (#36).
+GitHub rewrites spaces in asset names, which had made every Windows update unverifiable.
+
+**v1.7.5** · 2026-07-31 — the audit's security chain, its confirmed bugs and the CI gaps closed (#25);
+the Rust reference dropped and the repo given an agent configuration (#24).
+
+**v1.7.4** · 2026-07-31 — a release with no notes of its own.
+
+**v1.7.3** · 2026-07-30 — the first release: the whole backend ported from the 1.7.2 reference to
+.NET across thirteen slices (#1–#15) — transport and storage, workspaces and agent adapters, the
+GitHub and Azure DevOps providers, the review engine and its memory, the terminal, the skills
+subsystem, file operations and repo-wide search, the API tester, and WebSocket, Socket.IO and MQTT —
+plus the installers for macOS and Windows.

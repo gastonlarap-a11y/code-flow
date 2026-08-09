@@ -682,7 +682,7 @@ Reglas:
 ### `DEFAULT_PR_REVIEW_STANDARD`
 **Implementation**: `src/CodeFlow.App/Ai/AiOperations.cs` · `VERBATIM`
 
-Ported from the transversal `WF-PR-REVIEWER` runbook (SonarQube-style taxonomy, A–E ratings,
+Ported from the transversal review runbook this engine descends from (SonarQube-style taxonomy, A–E ratings,
 Quality Gate, six review lenses); seeded per-workspace and editable from Settings, project-agnostic
 by design (repository-specific rules live in each workspace's review contexts/MD files, folded in
 as "PROJECT REVIEW CONTEXT" rather than replacing this standard). Its **OUTPUT FORMAT** section —

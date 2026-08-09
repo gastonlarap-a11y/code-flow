@@ -14,10 +14,16 @@ namespace CodeFlow.Update;
 /// </summary>
 /// <remarks>
 /// <para>
-/// There is no signed manifest to check against: the repository is private, so nothing can be
-/// fetched anonymously, and the app is unsigned, so there would be no key to verify an update
-/// with. What is left is the honest subset — read the release list with a borrowed credential, and
-/// hand the artefact over.
+/// There is no signed manifest to check against: the app is unsigned, so there would be no key to
+/// verify an update with. What is left is the honest subset — read the release list and hand the
+/// artefact over, having checked it against the <c>.sha256</c> published beside it.
+/// </para>
+/// <para>
+/// The credential handling below reads older than it is. It dates from when this repository was
+/// private, where every call needed a token; the releases are public now and the API answers
+/// anonymously, so the credential is a fallback that raises the rate limit rather than a
+/// requirement. The 404 handling stays for the same reason it always applied — a repository with no
+/// releases yet returns one too.
 /// </para>
 /// <para>
 /// The repository is a constant. It is tempting to reuse <c>Providers.RepoDetection</c>, which

@@ -35,9 +35,10 @@ version="$(node -p "require('./shell/package.json').version")"
 say "==> building the macOS installer (v${version})"
 scripts/build-app.sh mac >&2
 
-# Named from the declared version rather than picked off a listing. `dist-installers/` is not
-# cleaned between builds, so a previous version's .dmg sits right next to this one — and being
-# alphabetically first, that is what `ls | head -1` would hand back.
+# Named from the declared version rather than picked off a listing. `build-app.sh` prunes the
+# previous macOS artefacts above, so in practice one .dmg is here — but naming it costs nothing and
+# does not depend on that pruning staying correct, whereas `ls | head -1` would hand back whichever
+# name sorted first the day it stopped being.
 #
 # The name is electron-builder's default pattern, `${productName}-${version}-${arch}.${ext}`;
 # `shell/electron-builder.yml` sets no `artifactName`, so changing that there means changing it here.

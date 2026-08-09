@@ -271,7 +271,7 @@ su motivo:
 - Paridad i18n en/es (test existente); atajos actuales se conservan aunque cambien los menús.
 - Los 21 temas y 8 acentos siguen funcionando: todo color entra por tokens y `codeThemes.ts`.
 - `prefers-reduced-motion`, focus rings, contraste 4.5:1.
-- Reglas de `.claude/rules/renderer*.md`: sin `window.codeflow` en componentes, un store por dominio, Monaco solo vía `lib/monacoEditor.ts`, popover API para overlays.
+- Reglas del renderer (ver `AGENTS.md`): sin `window.codeflow` en componentes, un store por dominio, Monaco solo vía `lib/monacoEditor.ts`, popover API para overlays.
 - Las vistas siguen montadas-ocultas al cambiar de módulo (estado de terminal/sockets API se preserva).
 
 ## 12. Verificación (al implementar)

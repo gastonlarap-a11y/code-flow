@@ -39,6 +39,15 @@ publish/
 dist-installers/
 shell/build/
 
+# Local agent scaffolding. These configure the tools used to work *on* CodeFlow — rules, skills,
+# permissions, working notes — rather than describing CodeFlow itself, which is what AGENTS.md is
+# for. They stay on the machine that uses them.
+.claude/
+.agents/
+.gemini/
+CLAUDE.md
+PLAN-MEJORAS.md
+
 # Secrets — never commit these
 .env
 .env.*

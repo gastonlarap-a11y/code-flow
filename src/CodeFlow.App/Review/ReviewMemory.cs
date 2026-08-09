@@ -149,9 +149,8 @@ internal static partial class ReviewMemory
     /// number a human read could name a different finding from the one the posting flow acted on.
     /// </para>
     /// <para>
-    /// WF-PR-REVIEWER — the document these rules were ported from, and which
-    /// <c>90-ambiguities.md</c> recorded as unavailable — cannot have this problem: its
-    /// <c>report-standard.md</c> §3.1 has the model write a minimal JSON draft and an engine assign
+    /// The runbook these rules were ported from cannot have this problem: its report standard has
+    /// the model write a minimal JSON draft and an engine assign
     /// the ids and render the report, so there is one source of truth by construction. The drift
     /// arrived when the port kept the model's free-written markdown and dropped the render step. It
     /// was never a deliberate choice, which is what reading the document settled.
@@ -234,9 +233,9 @@ internal static partial class ReviewMemory
     /// </param>
     /// <remarks>
     /// Called only when the pull request already has a saved run; a first-ever review skips this
-    /// entirely. Mirrors WF-PR-REVIEWER's <c>re-review.md</c>, per 1.7.2's own comment —
-    /// a document that is not available, which is why the two <c>AMBIGUOUS-REVIEW-*</c> markers
-    /// stay open rather than being reasoned away.
+    /// entirely. Mirrors the source runbook's reconciliation rules, per 1.7.2's own comment; what
+    /// those rules settle is transcribed in <c>07-review-pipeline.md</c>, which is why the two
+    /// <c>AMBIGUOUS-REVIEW-*</c> markers are closed there rather than left to be reasoned away.
     /// </remarks>
     public static (List<MemoryFinding> Merged, ReviewDelta Delta) Reconcile(
         IReadOnlyList<MemoryFinding> previous,

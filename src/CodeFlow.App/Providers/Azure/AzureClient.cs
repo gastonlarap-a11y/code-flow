@@ -88,7 +88,11 @@ public sealed class AzureException(string message, bool unauthorized = false) : 
 public static class AzureClient
 {
     /// <summary>The REST contract every call pins itself to.</summary>
-    private const string ApiVersion = "7.1";
+    /// <remarks>
+    /// <c>internal</c> rather than private so <see cref="AzureWorkItemClient"/> pins the same contract
+    /// instead of declaring a second <c>"7.1"</c> that could drift from this one.
+    /// </remarks>
+    internal const string ApiVersion = "7.1";
 
     /// <summary>
     /// The contract <c>connectionData</c> alone requires.
@@ -759,7 +763,13 @@ public static class AzureClient
     // ---------- path segments ----------
 
     /// <summary>The organisation, normalised then encoded — the form every URL here needs.</summary>
-    private static string OrgSegment(string org) => Encode(NormalizeOrg(org));
+    /// <remarks>
+    /// <c>internal</c> so the work-item client builds its URLs the same way. Normalisation is not
+    /// cosmetic: <see cref="NormalizeOrg"/> reduces a saved <c>https://dev.azure.com/acme</c> or
+    /// <c>acme.visualstudio.com</c> to <c>acme</c>, and Azure's server rejects a literal <c>:</c>
+    /// anywhere in a request path.
+    /// </remarks>
+    internal static string OrgSegment(string org) => Encode(NormalizeOrg(org));
 
     /// <summary>
     /// Reduces whatever the user saved as their "organisation" to the bare name.
@@ -887,6 +897,38 @@ public static class AzureClient
         }
     }
 
+    /// <summary>
+    /// Any URL on this host, read as raw bytes, with this file's auth and transport handling.
+    /// </summary>
+    /// <remarks>
+    /// One <c>internal</c> member instead of promoting <c>Request</c>, <c>SendAsync</c> and
+    /// <c>EnsureSuccessAsync</c> separately: <see cref="AzureWorkItemClient"/> needs exactly this —
+    /// a work-item attachment is bytes behind the same Basic auth — and everything else about how
+    /// the request is built stays private to this file.
+    /// <para>
+    /// The failure text follows <c>GetBlobAsync</c>'s shape and drops the response body: an
+    /// attachment that fails to download answers with the file's own bytes or an error page, and
+    /// interpolating either into a message helps nobody.
+    /// </para>
+    /// </remarks>
+    internal static async Task<byte[]> GetBytesAsync(
+        HttpClient http, string url, string pat, CancellationToken cancellationToken)
+    {
+        using var request = Request(HttpMethod.Get, url, pat);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+
+        using var response = await SendAsync(http, request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new AzureException(
+                $"Azure DevOps returned {StatusText.Of(response.StatusCode)} reading a file",
+                response.StatusCode
+                    is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden);
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static HttpRequestMessage Request(HttpMethod method, string url, string pat)
     {
         var request = new HttpRequestMessage(method, url);
@@ -896,7 +938,16 @@ public static class AzureClient
         return request;
     }
 
-    private static async Task<T> GetAsync<T>(
+    /// <summary>
+    /// A GET returning a deserialised resource, with this file's error mapping.
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> so <see cref="AzureWorkItemClient"/> reaches Azure through the same transport.
+    /// Sharing it is the point: <c>DIVERGENCE-PROV-b</c>'s 401/403 marking lives in
+    /// <see cref="EnsureSuccessAsync"/>, and a second client with its own <c>SendAsync</c> would map
+    /// a refused credential to a generic failure without anything failing to compile.
+    /// </remarks>
+    internal static async Task<T> GetAsync<T>(
         HttpClient http, string url, string pat, JsonTypeInfo<T> type, CancellationToken cancellationToken)
     {
         using var request = Request(HttpMethod.Get, url, pat);
@@ -918,7 +969,9 @@ public static class AzureClient
     }
 
     /// <summary>Sends a request with a JSON body and deserialises the resource it returned.</summary>
-    private static async Task<TResult> SendJsonAsync<TBody, TResult>(
+    /// <remarks><c>internal</c> for the same reason as <see cref="GetAsync{T}"/>: WIQL and the
+    /// work-item batch read are POSTs, and they must share this error mapping.</remarks>
+    internal static async Task<TResult> SendJsonAsync<TBody, TResult>(
         HttpClient http, HttpMethod method, string url, string pat,
         TBody body, JsonTypeInfo<TBody> bodyType, JsonTypeInfo<TResult> resultType,
         CancellationToken cancellationToken)

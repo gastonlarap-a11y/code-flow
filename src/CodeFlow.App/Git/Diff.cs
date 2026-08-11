@@ -177,6 +177,51 @@ public static class Diff
         return Collect(repo.Diff.Compare<Patch>(mergeBase.Tree, headCommit.Tree, FullFile()));
     }
 
+    /// <summary>
+    /// Everything a branch contributes over <paramref name="baseRef"/>, committed or not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this is not <see cref="BranchDiff"/> plus <see cref="Working"/>.</b> Those two are
+    /// separate comparisons against separate baselines, so a file changed by a commit on the branch
+    /// <em>and</em> edited again since would appear in both, twice, with no way for a reader — or a
+    /// model — to tell that the second diff continues the first rather than duplicating it. This is
+    /// one comparison against one baseline, so every file appears once with its cumulative change.
+    /// </para>
+    /// <para>
+    /// The baseline is the merge base rather than <paramref name="baseRef"/>'s tip, exactly as
+    /// <see cref="BranchDiff"/> computes it (<c>GIT-030</c>): what matters is what this branch added,
+    /// not what the base branch has moved on to since.
+    /// </para>
+    /// <para>
+    /// Untracked files are included, and that is a property of the target rather than something
+    /// asked for here: LibGit2Sharp turns <see cref="DiffTargets.WorkingDirectory"/> into
+    /// <c>DiffModifiers.IncludeUntracked</c> on its own (verified in LibGit2Sharp 0.32.0's
+    /// <c>Diff.Compare</c>). A brand-new file nobody has staged is usually the most important thing
+    /// a branch contributes, so the behaviour is wanted — it is documented here because it is not
+    /// visible at the call site.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<FileDiffInfo> BranchContribution(string repoPath, string baseRef)
+    {
+        using var repo = RepoStatus.Open(repoPath);
+
+        var baseCommit = ResolveBranchCommit(repo, baseRef);
+
+        // HEAD rather than a named branch: the point of this diff is the working tree, and a
+        // detached or just-branched HEAD still has one.
+        var headCommit = repo.Head.Tip
+            ?? throw new InvalidOperationException(
+                "This repository has no commits yet, so there is no branch to compare.");
+
+        var mergeBase = repo.ObjectDatabase.FindMergeBase(baseCommit, headCommit)
+            ?? throw new InvalidOperationException(
+                $"no merge base found between '{baseRef}' and the current branch");
+
+        return Collect(repo.Diff.Compare<Patch>(
+            mergeBase.Tree, DiffTargets.WorkingDirectory | DiffTargets.Index, null, null, FullFile()));
+    }
+
     /// <summary>The full SHA a ref resolves to, used to record what a review ran against.</summary>
     public static string ResolveSha(string repoPath, string refname)
     {

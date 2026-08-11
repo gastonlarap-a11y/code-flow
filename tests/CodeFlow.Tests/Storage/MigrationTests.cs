@@ -41,13 +41,20 @@ public sealed class MigrationTests : IDisposable
         var tables = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
         var indexes = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'");
 
-        Assert.Equal(18, tables.Count);
-        Assert.Equal(7, indexes.Count);
+        Assert.Equal(21, tables.Count);
+        Assert.Equal(9, indexes.Count);
 
         // Spot-check the ones a later slice depends on being spelled exactly this way.
         Assert.Contains("workspace_prompts", tables);
         Assert.Contains("api_cookies", tables);
         Assert.Contains("idx_api_cookies_key", indexes);
+
+        // The work-item tables. `ticket_review_runs` is named here because the temptation is to
+        // fold it into review_runs, and doing so would break that table's pr_id contract.
+        Assert.Contains("tickets", tables);
+        Assert.Contains("ticket_links", tables);
+        Assert.Contains("ticket_review_runs", tables);
+        Assert.Contains("idx_tickets_identity", indexes);
 
         // The two activity tables are append-only and never purged, so an unindexed read is a
         // full scan that grows with the install. Named here so dropping one is not silent.

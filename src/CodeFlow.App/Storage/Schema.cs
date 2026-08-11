@@ -166,6 +166,68 @@ internal static class Schema
             updated_at  TEXT NOT NULL
         );
 
+        -- ===================== Work items (tickets) =====================
+        -- The cached ticket. `raw_json` is what the on-disk mirror is rewritten from, so a
+        -- re-render never needs the network and a failed sync still has something to show.
+        -- `external_id` is TEXT rather than INTEGER because Azure numbers its work items and Jira
+        -- names them ("PROJ-45"); one column has to hold both.
+        CREATE TABLE IF NOT EXISTS tickets (
+            id             TEXT PRIMARY KEY,
+            provider       TEXT NOT NULL DEFAULT 'azure',
+            org            TEXT NOT NULL,
+            project        TEXT NOT NULL,
+            external_id    TEXT NOT NULL,
+            title          TEXT NOT NULL,
+            state          TEXT NOT NULL,
+            work_item_type TEXT NOT NULL,
+            assigned_to    TEXT,
+            web_url        TEXT NOT NULL,
+            -- The host's revision counter, kept so a state change can send a JSON Patch `test`
+            -- op and refuse rather than overwrite an edit made in the browser meanwhile.
+            rev            INTEGER NOT NULL DEFAULT 0,
+            raw_json       TEXT NOT NULL DEFAULT '{}',
+            mirror_path    TEXT NOT NULL,
+            synced_at      TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_identity
+            ON tickets (provider, org, project, external_id);
+
+        -- Which ticket a branch is work for. The primary key is the pair, so a branch has at most
+        -- one ticket and the pre-commit review can look it up without disambiguating.
+        CREATE TABLE IF NOT EXISTS ticket_links (
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            branch      TEXT NOT NULL,
+            ticket_id   TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            linked_at   TEXT NOT NULL,
+            PRIMARY KEY (project_id, branch)
+        );
+
+        -- Reviews of a branch against its ticket. Deliberately NOT `review_runs`: that table's
+        -- `pr_id` is NOT NULL and its whole reconciliation machinery is keyed on a pull request
+        -- that iterates. A pre-commit review has no pull request, and giving it a fake id would
+        -- corrupt idx_review_runs_pr for every reader that treats the column as a real one.
+        -- `findings` holds the same JSON shape review_runs.findings does, so the renderer's
+        -- finding cards render both without knowing which table a run came from.
+        CREATE TABLE IF NOT EXISTS ticket_review_runs (
+            id               TEXT PRIMARY KEY,
+            project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            workspace_id     TEXT NOT NULL,
+            ticket_id        TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            branch           TEXT NOT NULL,
+            base_ref         TEXT NOT NULL,
+            head_sha         TEXT NOT NULL,
+            level            TEXT NOT NULL,
+            meta             TEXT NOT NULL DEFAULT '{}',
+            review_md        TEXT NOT NULL,
+            diff             TEXT NOT NULL DEFAULT '',
+            findings         TEXT NOT NULL DEFAULT '[]',
+            criteria         TEXT NOT NULL DEFAULT '[]',
+            coverage_verdict TEXT NOT NULL DEFAULT '',
+            created_at       TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ticket_review_runs_branch
+            ON ticket_review_runs (project_id, branch, created_at);
+
         -- ===================== API client (per workspace) =====================
         -- Only the roots carry `workspace_id`: folders and requests reach it through their
         -- collection, so there is exactly one place a row's workspace can be wrong.

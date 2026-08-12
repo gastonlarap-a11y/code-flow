@@ -32,6 +32,14 @@ import type {
   StashInfo,
   ReviewRunDetail,
   ReviewRunSummary,
+  Ticket,
+  TicketAccount,
+  TicketCriteria,
+  TicketLinkRef,
+  TicketReviewResult,
+  TicketSuggestion,
+  TicketSummary,
+  TicketWithLinks,
   Workspace,
   WorkspaceAgent,
   WorkspaceMcp,
@@ -48,7 +56,7 @@ import type { FindingLocation } from "../parseAnalysis";
  * the sidecar to the shell — adding one to open a folder picker would not pay for itself.
  */
 
-export const quitApp = () => host.quit();
+export const quitApp = () => host.quit("Settings' Quit button");
 
 /**
  * Marks the wipe and quits. The two halves are split across processes: the sidecar writes the
@@ -58,7 +66,7 @@ export const quitApp = () => host.quit();
  */
 export const resetAppData = async () => {
   await invoke<void>("reset_app_data");
-  await host.quit();
+  await host.quit("reset_app_data, to let startup do the deleting");
 };
 
 // ---------- workspaces / projects ----------
@@ -512,13 +520,38 @@ export const defaultPrDescriptionTemplate = () => invoke<string>("default_pr_des
 
 export const defaultResolveConflictTemplate = () => invoke<string>("default_resolve_conflict_template");
 
-export const analyzeWorkingChanges = (projectId: string, jobId: string, agent?: ChatAgentOverride | null) =>
-  invoke<string>("analyze_working_changes", {
-    projectId,
-    jobId,
-    agentProvider: agent?.provider ?? null,
-    agentModel: agent?.model ?? null,
-    agentPrompt: agent?.prompt ?? null,
+/**
+ * Reviews local changes, over the two axes the panel exposes.
+ *
+ * `scope` picks the diff — what is not committed yet, or everything the branch contributes over
+ * `baseRef`. `withTicket` decides whether the branch's work item is judged too, which also decides
+ * the prompt, the routing key and where the run is stored. It replaced `analyze_working_changes` and
+ * `review_branch_ticket`, which were the same two axes welded into two of their four combinations.
+ *
+ * Returns the review markdown, which is what `jobsStore` keeps. A ticket run's parsed verdict is
+ * stored server-side and read back through `listTicketReviews`.
+ */
+export const reviewChanges = (args: {
+  projectId: string;
+  jobId: string;
+  branch: string;
+  scope: "working" | "branch";
+  withTicket: boolean;
+  baseRef: string;
+  level: string;
+  agent?: ChatAgentOverride | null;
+}) =>
+  invoke<string>("review_changes", {
+    projectId: args.projectId,
+    jobId: args.jobId,
+    branch: args.branch,
+    scope: args.scope,
+    withTicket: args.withTicket,
+    baseRef: args.baseRef,
+    level: args.level,
+    agentProvider: args.agent?.provider ?? null,
+    agentModel: args.agent?.model ?? null,
+    agentPrompt: args.agent?.prompt ?? null,
   });
 
 export const resolveFindingWithAi = (projectId: string, findingPrompt: string, runId?: string) =>
@@ -885,3 +918,85 @@ export const prLinkDecision = (url: string) => invoke<PrDecision>("pr_link_decis
 /** Approve / request changes / close the PR behind a link. Returns it as the host now reports it. */
 export const actOnPrLink = (url: string, action: PrAction, body?: string) =>
   invoke<PullRequestSummary>("act_on_pr_link", { url, action, body });
+
+// ---------- work items (tickets) ----------
+// Every wrapper here reads. Commenting and state transitions are a later, separately requested
+// step, so nothing in this section can alter a board.
+
+/**
+ * Sets or clears which Azure organisation and board project this workspace's tickets come from.
+ *
+ * Sent as a pair because they are only meaningful together, and both are clearable: a null falls
+ * the resolution back to the repository's own link rather than to nothing.
+ */
+export const updateWorkspaceTicketAccount = (
+  workspaceId: string,
+  org: string | null,
+  project: string | null,
+) => invoke<null>("update_workspace_ticket_account", { workspaceId, org, project });
+
+/** Which account a project's tickets come from, and how that was decided. `source: "none"` means
+ * it was not — show a picker rather than proceeding. */
+export const resolveTicketAccount = (projectId: string) =>
+  invoke<TicketAccount>("resolve_ticket_account", { projectId });
+
+/** What a pasted work-item URL or a typed id addresses. Null for anything that is not one. */
+export const resolveTicketLink = (text: string) =>
+  invoke<TicketLinkRef | null>("resolve_ticket_link", { text });
+
+/** The ticket a branch name looks like it belongs to. A suggestion to confirm, never a link. */
+export const suggestTicketForBranch = (branch: string) =>
+  invoke<TicketSuggestion | null>("suggest_ticket_for_branch", { branch });
+
+/** Fetches a work item, caches it and rewrites its mirror on disk. */
+export const syncTicket = (org: string, project: string, externalId: string) =>
+  invoke<Ticket>("sync_ticket", { org, project, externalId });
+
+export const getTicket = (ticketId: string) => invoke<Ticket | null>("get_ticket", { ticketId });
+
+/**
+ * Every ticket this repository has linked, most recently synced first, each with the branches it is
+ * work for.
+ *
+ * A link outlives the branch: deleting a branch in git never removes it, so this is also the record
+ * of what the branches you have already merged and deleted were work for.
+ */
+export const listTickets = (projectId: string) =>
+  invoke<TicketWithLinks[]>("list_tickets", { projectId });
+
+/** What the ticket asks for, recomputed from the cached payload — no network. */
+export const getTicketCriteria = (ticketId: string) =>
+  invoke<TicketCriteria>("get_ticket_criteria", { ticketId });
+
+export const linkBranchTicket = (projectId: string, branch: string, ticketId: string) =>
+  invoke<null>("link_branch_ticket", { projectId, branch, ticketId });
+
+export const unlinkBranchTicket = (projectId: string, branch: string) =>
+  invoke<null>("unlink_branch_ticket", { projectId, branch });
+
+/** The ticket explicitly linked to a branch. The name heuristic never answers here. */
+export const ticketForBranch = (projectId: string, branch: string) =>
+  invoke<Ticket | null>("ticket_for_branch", { projectId, branch });
+
+/** The current sprint's work items — the picker's default list, because it is what the taskboard
+ * shows. Omit `team` to use the first one with a current iteration. */
+export const listSprintTickets = (org: string, project: string, team?: string) =>
+  invoke<TicketSummary[]>("list_sprint_tickets", { org, project, team });
+
+export const listMyTickets = (org: string, project: string) =>
+  invoke<TicketSummary[]>("list_my_tickets", { org, project });
+
+/**
+ * One work item's row, without caching or mirroring it.
+ *
+ * What the link dialog shows the moment a pasted address parses. Deliberately not `syncTicket`,
+ * which writes the cache, rewrites the mirror and downloads attachments — this runs while somebody
+ * is still typing. `null` means no such work item, which a half-typed id is.
+ */
+export const previewTicket = (org: string, project: string, externalId: string) =>
+  invoke<TicketSummary | null>("preview_ticket", { org, project, externalId });
+
+/** This branch's stored ticket reviews, newest first. */
+export const listTicketReviews = (projectId: string, branch: string) =>
+  invoke<TicketReviewResult[]>("list_ticket_reviews", { projectId, branch });
+

@@ -8,6 +8,12 @@ export interface Workspace {
   /** Commit-identity override (WS-008): both null means "use the global git identity". */
   git_name: string | null;
   git_email: string | null;
+  /** Which Azure DevOps organisation this workspace's tickets come from. Null means the user has
+   * not chosen, and the resolution falls through to the linked project's own organisation. */
+  ado_org: string | null;
+  /** Which project inside it holds the board. Null falls through to the repository's own — which a
+   * GitHub-hosted repository does not have, so this is the only place it can be said. */
+  ado_project: string | null;
 }
 
 export interface Project {
@@ -406,3 +412,130 @@ export type PrLinkResolution =
       pr: PullRequestSummary;
     }
   | { status: "Unrecognized" };
+
+// ---------------------------------------------------------------------------
+// Work items (tickets)
+// ---------------------------------------------------------------------------
+
+/** A cached work item. `mirror_path` is where its readable copy lives on disk. */
+export interface Ticket {
+  id: string;
+  provider: string;
+  org: string;
+  project: string;
+  /** Text, not a number: Azure numbers work items and Jira names them ("PROJ-45"). */
+  external_id: string;
+  title: string;
+  state: string;
+  work_item_type: string;
+  assigned_to: string | null;
+  web_url: string;
+  rev: number;
+  mirror_path: string;
+  synced_at: string;
+}
+
+/** One row of a ticket picker — what a list shows, fetched without the rest of the work item. */
+export interface TicketSummary {
+  external_id: string;
+  title: string;
+  state: string;
+  work_item_type: string;
+  assigned_to: string | null;
+}
+
+/** How the Azure account for a project's tickets was decided. `none` means it was not: the UI has
+ * to ask, because guessing shows the wrong board's (empty) list and blames the board. */
+export type TicketAccountSource = "workspace" | "project" | "only_connection" | "none";
+
+export interface TicketAccount {
+  org: string | null;
+  project: string | null;
+  source: TicketAccountSource;
+}
+
+/** Where a ticket's requirements were found, and in what shape.
+ * `list`: an enumerable list, already numbered in `items`.
+ * `prose`: narrative — the model enumerates it, because splitting prose by regex cuts criteria in half.
+ * `none`: no field carried enough content to be a requirement, which the review says out loud. */
+export type TicketCriteriaMode = "list" | "prose" | "none";
+
+export interface TicketCriteria {
+  mode: TicketCriteriaMode;
+  /** The Azure reference name the content came from, e.g. `System.Description`. */
+  field: string | null;
+  markdown: string;
+  items: string[];
+}
+
+/** Where a cached ticket is linked: one per branch it is work for. */
+export interface TicketLink {
+  project_id: string;
+  /** The repository's own name — an id on screen answers nothing. */
+  project_name: string;
+  branch: string;
+}
+
+/**
+ * A cached ticket and the branches it is work for.
+ *
+ * The links ride with it because `list_tickets` is workspace-wide: a row that does not say which
+ * repository and branch it belongs to is unreadable as soon as a workspace holds two repositories.
+ * Genuinely plural — `ticket_links` is keyed `(project_id, branch)`.
+ */
+export interface TicketWithLinks {
+  ticket: Ticket;
+  links: TicketLink[];
+}
+
+/** A ticket a branch name appears to be about. A suggestion, never a link. */
+export interface TicketSuggestion {
+  provider: string;
+  external_id: string;
+}
+
+/** A work item address parsed out of pasted text. `org`/`project` are null for a bare id. */
+export interface TicketLinkRef {
+  id: number;
+  org: string | null;
+  project: string | null;
+}
+
+/**
+ * One finished ticket review.
+ *
+ * `criteria` and `coverage` are what the sidecar parsed out of the model's answer with
+ * `TicketVerdict`, stored as parsed so a later parser change cannot rewrite history. `review_md` is
+ * the whole answer, findings and verdict sections together — `splitTicketReview` cuts it for the two
+ * renderers.
+ */
+export interface TicketReviewResult {
+  id: string;
+  project_id: string;
+  ticket_id: string;
+  branch: string;
+  base_ref: string;
+  head_sha: string;
+  level: string;
+  review_md: string;
+  criteria: TicketCriterionVerdictWire[];
+  coverage: TicketCoverageWire | null;
+  created_at: string;
+}
+
+/** The wire form of one criterion's verdict — snake_case, unlike `parseTicketVerdict`'s own type. */
+export interface TicketCriterionVerdictWire {
+  id: string;
+  criterion: string;
+  verdict: string;
+  evidence: string;
+  confidence: number | null;
+}
+
+/** The wire form of the coverage block. */
+export interface TicketCoverageWire {
+  coverage: string;
+  missing: string;
+  out_of_scope: string;
+  summary: string;
+}

@@ -150,5 +150,5 @@ async function download(
 export function relaunch(): Promise<void> {
   // Quitting is real even without the updater: it is the same path the tray's Quit item uses. On
   // Windows the NSIS installer is already waiting for this process to exit.
-  return host.quit();
+  return host.quit("the updater, after staging a new version");
 }

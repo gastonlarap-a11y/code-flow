@@ -41,7 +41,8 @@ type Bridge = {
   clipboardWrite(text: string): Promise<void>;
   /** Reveals the app's log directory. Takes no path: the shell owns which one. */
   openLogs(): Promise<void>;
-  quit(): Promise<void>;
+  /** `reason` is recorded in `shell.log`; the three callers here mean very different things. */
+  quit(reason: string): Promise<void>;
   /** Asked at mount, because the `codeflow:sidecar-status` event fires before this window exists. */
   sidecarStatus(): Promise<{
     status: "starting" | "ready" | "down";
@@ -131,7 +132,7 @@ export const host = {
   openExternal: (url: string) => bridge().openExternal(url),
   clipboardWrite: (text: string) => bridge().clipboardWrite(text),
   openLogs: () => bridge().openLogs(),
-  quit: () => bridge().quit(),
+  quit: (reason: string) => bridge().quit(reason),
   sidecarStatus: () => bridge().sidecarStatus(),
   /** True when the shell is present, for the few places that degrade rather than fail. */
   available: () => typeof window !== "undefined" && window.codeflow !== undefined,

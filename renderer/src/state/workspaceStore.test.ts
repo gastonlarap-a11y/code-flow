@@ -28,6 +28,8 @@ const workspace = (id: string): Workspace => ({
   color: "#6366f1",
   sort_order: 0,
   created_at: "2026-01-01T00:00:00.0000000+00:00",
+  ado_org: null,
+  ado_project: null,
   git_name: null,
   git_email: null,
 });

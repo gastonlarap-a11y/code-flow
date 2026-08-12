@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AzureDevOpsSettings } from "./AzureDevOpsSettings";
 import { GitHubSettings } from "./GitHubSettings";
 import { GroupCard } from "./GroupCard";
+import { WorkspaceTicketAccounts } from "./WorkspaceTicketAccounts";
 import { Chip } from "../common/Chip";
 import { VCS_PROVIDERS, type ProviderCapability, type VcsProviderOption } from "../../lib/vcsProviders";
 import { loadAdoConnections } from "../../lib/adoConnections";
@@ -118,6 +119,12 @@ export function IntegrationsSettings() {
             defaultOpen={provider.id === initialProvider}
           />
         ))}
+      </div>
+
+      {/* Below the connections rather than inside the Azure one: it is a choice *between* the
+          accounts listed above, and it only makes sense once more than one exists. */}
+      <div className="mt-6">
+        <WorkspaceTicketAccounts />
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState, type ReactElement } from "react";
 import { lazyRetry } from "./lib/lazyRetry";
 import { AnimatePresence } from "framer-motion";
-import { FolderGit2, SquareKanban } from "lucide-react";
+import { FolderGit2 } from "lucide-react";
 import { useT } from "./state/languageStore";
 import { CommandHeader } from "./components/layout/CommandHeader";
 import { SidecarBanner } from "./components/layout/SidecarBanner";
@@ -10,6 +10,7 @@ import { ContextPanel } from "./components/layout/ContextPanel";
 import { HomeView } from "./components/home/HomeView";
 import { GraphView } from "./components/git/GraphView";
 import { ChangesPanel } from "./components/git/ChangesPanel";
+import { WorkItemsView } from "./components/workitems/WorkItemsView";
 import { AiPanel } from "./components/ai/AiPanel";
 import { TerminalDock } from "./components/terminal/TerminalDock";
 import { CommandPalette } from "./components/layout/CommandPalette";
@@ -76,18 +77,9 @@ const MODULE_VIEWS: Record<ModuleId, () => ReactElement> = {
   graph: () => <GraphView />,
   changes: () => <ChangesPanel />,
   editor: () => <EditorView />,
-  // Registered ahead of the feature (§7 of the proposal) and unreachable by design — the navigation
-  // shows it disabled and nothing else routes to it. This entry exists because `Record<ModuleId, …>`
-  // demands one, and it is the placeholder the real module replaces.
-  workitems: () => <ComingSoonView />,
+  workitems: () => <WorkItemsView />,
   api: () => <ApiView />,
 };
-
-/** What a registered-but-unbuilt module renders if something ever does reach it. */
-function ComingSoonView() {
-  const t = useT();
-  return <EmptyState icon={SquareKanban} title={t("tabbar.workitems")} subtitle={t("settings.comingSoon")} />;
-}
 
 const REPO_MODULES = modulesInScope("repo");
 /** Modules that aren't about a repository, so the "no project open" empty state must not swallow

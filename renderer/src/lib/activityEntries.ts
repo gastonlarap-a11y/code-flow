@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   ThumbsDown,
   ThumbsUp,
+  Ticket,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +30,9 @@ export type ActivityEntry =
 export function mergeActivityEntries(jobs: Job[], conversations: ChatConversationSummary[]): ActivityEntry[] {
   const prRuns = new Map<number, Job[]>();
   const analyzeRuns: Job[] = [];
+  // Collapsed for the same reason the analyses are: a branch has exactly one ticket, so re-running
+  // the review is another look at the same thing rather than another thing.
+  const ticketRuns: Job[] = [];
   const standalone: Job[] = [];
   for (const job of jobs) {
     const belongsToPr = job.kind === "pr-review" || job.kind === "pr-action";
@@ -38,6 +42,8 @@ export function mergeActivityEntries(jobs: Job[], conversations: ChatConversatio
       else prRuns.set(job.meta.prId, [job]);
     } else if (job.kind === "analyze-changes") {
       analyzeRuns.push(job);
+    } else if (job.kind === "ticket-review") {
+      ticketRuns.push(job);
     } else {
       standalone.push(job);
     }
@@ -51,8 +57,9 @@ export function mergeActivityEntries(jobs: Job[], conversations: ChatConversatio
     if (!newest) continue;
     jobEntries.push({ type: "job", job: newest, runs: sorted });
   }
-  if (analyzeRuns.length > 0) {
-    const sorted = byNewest(analyzeRuns);
+  for (const runs of [analyzeRuns, ticketRuns]) {
+    if (runs.length === 0) continue;
+    const sorted = byNewest(runs);
     const newest = sorted[0];
     if (newest) jobEntries.push({ type: "job", job: newest, runs: sorted });
   }
@@ -106,7 +113,11 @@ export function entryVisual(entry: ActivityEntry): { icon: LucideIcon; color: st
     if (action === "request_changes") return { icon: ThumbsDown, color: "var(--cf-warning)", spinning: false };
     return { icon: Ban, color: "var(--cf-danger)", spinning: false };
   }
-  return { icon: job.kind === "pr-review" ? GitPullRequest : ShieldCheck, color, spinning: false };
+  if (job.kind === "pr-review") return { icon: GitPullRequest, color, spinning: false };
+  // A ticket review and a pre-commit analysis both end in findings, and the row that says which one
+  // ran is the only place the difference is visible before you open it.
+  if (job.kind === "ticket-review") return { icon: Ticket, color, spinning: false };
+  return { icon: ShieldCheck, color, spinning: false };
 }
 
 /** Which entry the AI panel is actually showing right now, so the Activity list can

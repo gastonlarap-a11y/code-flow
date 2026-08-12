@@ -9,7 +9,7 @@ import { translations } from "../lib/i18n/translations";
 /** `pr-action` is the odd one out: it isn't something that *ran*, it's a decision that was taken
  * (approve / request changes / close). It's filed here anyway because Activity is where the user
  * looks for "what happened to this PR", and a decision belongs in that answer. */
-export type JobKind = "pr-review" | "analyze-changes" | "pr-action";
+export type JobKind = "pr-review" | "analyze-changes" | "pr-action" | "ticket-review";
 /** `cancelled` is a stopped run, kept apart from `error` so the UI can offer "run it again"
  * instead of showing a failure the user caused on purpose. It only ever lives in memory — the
  * backend doesn't persist a cancelled run to `job_history`. */

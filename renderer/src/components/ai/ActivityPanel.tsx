@@ -88,7 +88,9 @@ export function ActivitySection({ projectId }: { projectId: string }) {
     if (entry.job.kind === "pr-review" || entry.job.kind === "pr-action") {
       const pr = prsByProject[projectId]?.find((p) => p.id === entry.job.meta.prId);
       if (pr) selectPr(pr);
-    } else if (entry.job.kind === "analyze-changes") {
+      // Both kinds are reviews of local changes and both render in the same tab; what tells them
+      // apart is whether the answer carries a criteria table, which the row itself shows.
+    } else if (entry.job.kind === "analyze-changes" || entry.job.kind === "ticket-review") {
       useAiPanelStore.getState().showAnalyzeJob(entry.job.id);
     }
   };

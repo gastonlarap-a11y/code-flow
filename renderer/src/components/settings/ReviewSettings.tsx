@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Database, MessageSquareText, ShieldCheck, SquarePen, type LucideIcon } from "lucide-react";
+import { Database, MessageSquareText, ShieldCheck, SquarePen, Ticket, type LucideIcon } from "lucide-react";
 import { WorkspacePromptEditor } from "./WorkspacePromptEditor";
 import { ReviewContextEditor } from "./ReviewContextEditor";
 import { ReviewMemoriesSettings } from "./ReviewMemoriesSettings";
@@ -8,10 +8,11 @@ import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useT } from "../../state/languageStore";
 import type { TranslationKey } from "../../lib/i18n/translations";
 
-type TabId = "standard" | "context" | "prDesc" | "memories";
+type TabId = "standard" | "ticket" | "context" | "prDesc" | "memories";
 
 const TABS: { id: TabId; labelKey: TranslationKey; icon: LucideIcon }[] = [
   { id: "standard", labelKey: "settings.reviewTabStandard", icon: ShieldCheck },
+  { id: "ticket", labelKey: "settings.reviewTabTicket", icon: Ticket },
   { id: "context", labelKey: "settings.reviewTabContext", icon: MessageSquareText },
   { id: "prDesc", labelKey: "settings.reviewTabPrDesc", icon: SquarePen },
   { id: "memories", labelKey: "settings.reviewTabMemories", icon: Database },
@@ -55,6 +56,14 @@ export function ReviewSettings() {
           hintKey="settings.reviewStandardHint"
           placeholderKey="settings.reviewStandardPlaceholder"
           resetConfirmKey="settings.reviewStandardResetConfirm"
+        />
+      )}
+      {tab === "ticket" && (
+        <WorkspacePromptEditor
+          kind="ticket_review_standard"
+          hintKey="settings.ticketStandardHint"
+          placeholderKey="settings.ticketStandardPlaceholder"
+          resetConfirmKey="settings.ticketStandardResetConfirm"
         />
       )}
       {tab === "context" && <ReviewContextEditor />}

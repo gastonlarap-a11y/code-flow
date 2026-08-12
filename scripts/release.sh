@@ -216,25 +216,35 @@ scripts/publish-release.sh "$tag"
 
 step "waiting for the Windows installer"
 
-# On a tag push the run's headBranch *is* the tag. It does not appear the instant the tag lands, so
-# this looks for it rather than assuming; a minute is far longer than GitHub has ever taken to
-# register one.
+# The run to wait for is the **bump commit's own**, matched by its sha.
+#
+# Not by the tag, and not by branch: `ci.yml` triggers on pushes to main, so the tag push produces
+# no run at all and every run there has ever been has `main` as its headBranch. Looking for a
+# workflow named `release` and a headBranch equal to the tag described the three tag-triggered
+# workflows this repository replaced with one — it found nothing, and `gh` answering "could not find
+# any workflows named release" is where a v2.1.0 release stopped, still a draft, one step from done.
+#
+# The run does not appear the instant the push lands, so this looks for it rather than assuming.
+# `|| true` keeps a failing query as an empty answer to retry rather than an abort under `set -e`,
+# which is what turns "GitHub was slow" into the message below instead of a bare exit.
+sha="$(git rev-parse HEAD)"
 run_id=""
 for _ in $(seq 1 20); do
-  run_id="$(gh run list --workflow release --limit 20 --json databaseId,headBranch \
-    --jq "[.[] | select(.headBranch == \"$tag\")] | first | .databaseId // empty")"
+  run_id="$(gh run list --workflow ci --limit 20 --json databaseId,headSha \
+    --jq "[.[] | select(.headSha == \"$sha\")] | first | .databaseId // empty" || true)"
   [[ -n "$run_id" ]] && break
   sleep 3
 done
 
 if [[ -z "$run_id" ]]; then
-  fail "no release workflow run appeared for $tag. The macOS half is uploaded; start the other with:
-  gh workflow run release -f tag=$tag" 70
+  fail "no ci run appeared for ${sha:0:7} (the ${tag} bump). The macOS half is uploaded; start the
+other with:
+  gh workflow run ci --ref main" 70
 fi
 
 if ! gh run watch "$run_id" --exit-status; then
-  fail "the Windows job failed. The macOS half is already attached to $tag; re-run just that half with:
-  gh workflow run release -f tag=$tag" 70
+  fail "the Windows job failed. The macOS half is already attached to $tag; re-run the workflow with:
+  gh workflow run ci --ref main" 70
 fi
 
 # ---------------------------------------------------------------------------

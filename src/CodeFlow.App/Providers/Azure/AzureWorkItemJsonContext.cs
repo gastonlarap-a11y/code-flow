@@ -24,6 +24,8 @@ namespace CodeFlow.Providers.Azure;
 [JsonSerializable(typeof(AzureList<AdoTypeField>))]
 [JsonSerializable(typeof(IterationWorkItems))]
 [JsonSerializable(typeof(WorkItemComments))]
+[JsonSerializable(typeof(RawWorkItemComment))]
+[JsonSerializable(typeof(AddCommentBody))]
 [JsonSerializable(typeof(WiqlBody))]
 [JsonSerializable(typeof(WiqlResult))]
 [JsonSerializable(typeof(WorkItemsBatchBody))]

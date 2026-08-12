@@ -118,3 +118,11 @@ internal sealed record RawWorkItemComment(
 
 /// <summary>A page of work-item comments.</summary>
 internal sealed record WorkItemComments(IReadOnlyList<RawWorkItemComment>? Comments);
+
+/// <summary>The body of a new comment.</summary>
+/// <remarks>
+/// One field, and it is HTML: Azure renders a comment as rich text, so markdown arrives as its own
+/// punctuation — <c>## VERIFICACIÓN</c> and <c>**cumple**</c>, literally, on somebody's board.
+/// <see cref="CodeFlow.Tickets.TicketComment"/> converts before this is filled.
+/// </remarks>
+internal sealed record AddCommentBody(string Text);

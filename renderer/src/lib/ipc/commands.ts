@@ -1000,3 +1000,13 @@ export const previewTicket = (org: string, project: string, externalId: string) 
 export const listTicketReviews = (projectId: string, branch: string) =>
   invoke<TicketReviewResult[]>("list_ticket_reviews", { projectId, branch });
 
+/**
+ * Publishes text as a comment on the work item. The only call in this app that writes to a board.
+ *
+ * `body` is the markdown the user just read on screen, not a review id: the button publishes what
+ * was shown, and letting the sidecar re-derive it would let the two drift. It converts to the HTML
+ * an Azure comment renders, and answers with the work item's URL. `WI-022`.
+ */
+export const commentTicket = (ticketId: string, body: string) =>
+  invoke<string>("comment_ticket", { ticketId, body });
+

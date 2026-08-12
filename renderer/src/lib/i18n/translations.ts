@@ -1261,6 +1261,9 @@ export const translations = {
     "ticketReview.notRelevant": "This ticket does not describe this change",
     "ticketReview.notRelevantHint":
       "The criteria were not graded: judging a change against somebody else's requirements answers nothing. Check which work item the branch is linked to in Work items.",
+    "ticketReview.publish": "Publish on #{id}",
+    "ticketReview.publishing": "Publishing…",
+    "ticketReview.published": "Published on the work item",
     "ticketReview.criteriaTitle": "Acceptance criteria",
     "ticketReview.noCriteria": "The review reported no criteria — the ticket may not state any.",
     "ticketReview.coverageTitle": "Coverage",
@@ -2925,6 +2928,9 @@ export const translations = {
     "ticketReview.notRelevant": "Este ticket no describe este cambio",
     "ticketReview.notRelevantHint":
       "No se puntuaron los criterios: juzgar un cambio contra los requisitos de otro no responde nada. Revisa a qué work item está vinculada la rama en Elementos de trabajo.",
+    "ticketReview.publish": "Publicar en el #{id}",
+    "ticketReview.publishing": "Publicando…",
+    "ticketReview.published": "Publicado en el work item",
     "ticketReview.criteriaTitle": "Criterios de aceptación",
     "ticketReview.noCriteria": "La revisión no reportó criterios — puede que el ticket no declare ninguno.",
     "ticketReview.coverageTitle": "Cobertura",

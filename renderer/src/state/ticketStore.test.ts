@@ -22,6 +22,7 @@ vi.mock("../lib/ipc/commands", () => ({
   getTicketCriteria: vi.fn(),
   previewTicket: vi.fn(),
   listTicketReviews: vi.fn(),
+  commentTicket: vi.fn(),
 }));
 
 const toasts: string[] = [];
@@ -321,5 +322,45 @@ describe("criteria", () => {
 
     expect(api.getTicketCriteria).toHaveBeenCalledTimes(1);
     expect(useTicketStore.getState().criteria["t1"]).toEqual(criteria);
+  });
+});
+
+describe("comment", () => {
+  test("publishes the text it was given, on the linked ticket", async () => {
+    useTicketStore.setState({ linked: ticket("3") });
+    vi.mocked(api.commentTicket).mockResolvedValue("https://dev.azure.com/contoso/Web/_workitems/edit/3");
+
+    const ok = await useTicketStore.getState().comment("## VERIFICACIÓN\n**cumple**");
+
+    expect(ok).toBe(true);
+    // Verbatim, and against the linked ticket's id. Anything else here would publish something the
+    // user never read.
+    expect(api.commentTicket).toHaveBeenCalledWith("azure:contoso:Web:3", "## VERIFICACIÓN\n**cumple**");
+  });
+
+  test("with no ticket linked there is nothing to publish onto", async () => {
+    const ok = await useTicketStore.getState().comment("cualquier cosa");
+
+    expect(ok).toBe(false);
+    expect(api.commentTicket).not.toHaveBeenCalled();
+  });
+
+  test("a second press while the first is in flight is ignored", async () => {
+    useTicketStore.setState({ linked: ticket("3"), commenting: true });
+
+    // A board is the one place a duplicate cannot be taken back from inside the app, so the guard is
+    // state rather than only a disabled attribute on the button.
+    expect(await useTicketStore.getState().comment("uno")).toBe(false);
+    expect(api.commentTicket).not.toHaveBeenCalled();
+  });
+
+  test("a refusal is reported rather than swallowed", async () => {
+    useTicketStore.setState({ linked: ticket("3") });
+    vi.mocked(api.commentTicket).mockRejectedValue(new Error("CREDENTIAL_REFUSED: the PAT expired"));
+
+    expect(await useTicketStore.getState().comment("uno")).toBe(false);
+    expect(toasts[0]).toContain("CREDENTIAL_REFUSED");
+    // And the flag comes back down, or the button would stay dead for the rest of the session.
+    expect(useTicketStore.getState().commenting).toBe(false);
   });
 });

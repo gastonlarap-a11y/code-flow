@@ -1,6 +1,9 @@
-import { CircleAlert, CircleCheck, CircleHelp, CircleSlash } from "lucide-react";
+import { useState } from "react";
+import { CircleAlert, CircleCheck, CircleHelp, CircleSlash, Send } from "lucide-react";
+import { Button } from "../common/Button";
 import { Chip } from "../common/Chip";
 import { useT } from "../../state/languageStore";
+import { useTicketStore } from "../../state/ticketStore";
 import type { CriterionVerdict, ParsedTicketVerdict } from "../../lib/parseTicketVerdict";
 import type { TranslationKey } from "../../lib/i18n/translations";
 
@@ -114,6 +117,51 @@ export function TicketVerdictPanel({ verdict }: { verdict: ParsedTicketVerdict }
         </section>
       )}
     </>
+  );
+}
+
+/**
+ * The one control in this app that writes to somebody's board.
+ *
+ * A button, never automatic. A review is run repeatedly while work is in progress, so publishing
+ * every one of them would fill the work item with drafts of an answer — and the text is already on
+ * screen above this, which is what makes an explicit press an informed one (`WI-022`).
+ *
+ * It publishes `body` verbatim: the same markdown the panel above rendered, converted to HTML by
+ * the sidecar. Rebuilding it from the stored run would let what was approved and what is posted
+ * drift apart.
+ */
+export function PublishVerdict({ body }: { body: string }) {
+  const t = useT();
+  const linked = useTicketStore((s) => s.linked);
+  const commenting = useTicketStore((s) => s.commenting);
+  const comment = useTicketStore((s) => s.comment);
+  const [posted, setPosted] = useState(false);
+
+  // Nothing to publish onto. The panel can render a stored verdict for a branch whose link was
+  // removed since, and a button that could only fail is worse than no button.
+  if (!linked) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={commenting || posted}
+        onClick={() => {
+          void comment(body).then((ok) => setPosted(ok));
+        }}
+      >
+        <Send size={14} aria-hidden />
+        {commenting ? t("ticketReview.publishing") : t("ticketReview.publish", { id: linked.external_id })}
+      </Button>
+
+      {/* Latched rather than a toast: the answer to "did I already send this?" has to still be
+          there a minute later, and posting the same verdict twice is the mistake to prevent. */}
+      {posted && (
+        <span className="text-badge text-[var(--cf-success)]">{t("ticketReview.published")}</span>
+      )}
+    </div>
   );
 }
 

@@ -130,6 +130,29 @@ public sealed class AzureWorkItemClientTests
     }
 
     [Fact]
+    public async Task Adding_a_comment_posts_its_html_to_the_same_preview_contract()
+    {
+        using var handler = new FakeHttpHandler().Json("""{ "id": 7, "text": "<div>ok</div>" }""");
+        using var http = handler.Client();
+
+        await AzureWorkItemClient.AddCommentAsync(
+            http, Org, Project, 426647, "<h3>Veredicto</h3><div>cumple</div>", Pat, Ct);
+
+        var request = handler.Only;
+
+        // The one write in this client, so its shape is asserted rather than assumed: a POST, to the
+        // work item's own comments collection, at the preview version the read is pinned to.
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.EndsWith("/_apis/wit/workItems/426647/comments", request.Uri.AbsolutePath, StringComparison.Ordinal);
+        Assert.Contains("api-version=7.1-preview.4", request.Uri.Query, StringComparison.Ordinal);
+
+        // `text`, and the html reaches the wire as given — the caller converted it, and a second
+        // opinion here is how what a person approved stops being what gets posted.
+        var body = JsonDocument.Parse(request.Body!).RootElement;
+        Assert.Equal("<h3>Veredicto</h3><div>cumple</div>", body.GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task An_iterations_work_item_list_is_pinned_to_its_own_preview_contract()
     {
         using var handler = new FakeHttpHandler().Json("""{ "workItemRelations": [] }""");

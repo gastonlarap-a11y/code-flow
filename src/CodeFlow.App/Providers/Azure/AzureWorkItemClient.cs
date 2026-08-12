@@ -14,8 +14,11 @@ namespace CodeFlow.Providers.Azure;
 /// (<c>DIVERGENCE-PROV-b</c>), and organisation normalisation cannot drift between the two.
 /// </para>
 /// <para>
-/// <b>Read-only.</b> Nothing in this file writes to Azure. Commenting and state transitions are a
-/// later, separately requested step; until then a bug here cannot alter anybody's board.
+/// <b>One write, and it is additive.</b> <see cref="AddCommentAsync"/> is the only function here
+/// that changes anything, and a comment is the one change that undoes cleanly and moves nobody's
+/// card. State transitions are still not built and are not an oversight: they alter a board other
+/// people are looking at, and the state names are the project's process to decide, not this
+/// client's. <c>WI-022</c>.
 /// </para>
 /// <para>
 /// Every function takes <c>org</c>, <c>project</c> and <c>pat</c> explicitly. There is no ambient
@@ -289,6 +292,31 @@ internal static class AzureWorkItemClient
             .ConfigureAwait(false);
 
         return response.Comments ?? [];
+    }
+
+    /// <summary>Adds a comment to a work item and returns the one Azure created.</summary>
+    /// <remarks>
+    /// <para>
+    /// The only write in this client. <paramref name="html"/> is sent as given — the caller owns the
+    /// conversion, because what a person approved on screen and what lands on the board have to be
+    /// the same text (<see cref="CodeFlow.Tickets.TicketComment"/>).
+    /// </para>
+    /// <para>
+    /// Same preview api-version as the read: the comments endpoints never went GA, and a plain
+    /// <c>7.1</c> is rejected with a 400 demanding the suffix.
+    /// </para>
+    /// </remarks>
+    public static Task<RawWorkItemComment> AddCommentAsync(
+        HttpClient http, string org, string project, long id, string html, string pat,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://dev.azure.com/{AzureClient.OrgSegment(org)}/{AzureClient.Encode(project)}"
+            + $"/_apis/wit/workItems/{id}/comments?api-version={CommentsApiVersion}";
+
+        return AzureClient.SendJsonAsync(
+            http, HttpMethod.Post, url, pat, new AddCommentBody(html),
+            AzureWorkItemJsonContext.Default.AddCommentBody,
+            AzureWorkItemJsonContext.Default.RawWorkItemComment, cancellationToken);
     }
 
     /// <summary>

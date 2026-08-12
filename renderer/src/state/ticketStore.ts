@@ -101,6 +101,8 @@ interface TicketState {
    * yesterday should still be there today, and re-running it costs a model call.
    */
   lastReview: TicketReviewResult | null;
+  /** A publish in flight, so the button can say so and cannot be pressed twice. */
+  commenting: boolean;
 
   load: (projectId: string, branch: string | null) => Promise<void>;
   /** Just the branch's link and its last review — what the AI panel needs, without the list. */
@@ -117,6 +119,14 @@ interface TicketState {
   reloadList: () => Promise<void>;
   refresh: (ticket: Ticket) => Promise<void>;
   criteriaFor: (ticketId: string) => Promise<void>;
+  /**
+   * Publishes a verdict onto the linked work item, on an explicit press.
+   *
+   * Never called by a review finishing. A review is run many times while work is in progress, and a
+   * board collecting every attempt is worse than a board with nothing on it — so the text is shown
+   * first and this is what the user chooses afterwards. `WI-022`.
+   */
+  comment: (body: string) => Promise<boolean>;
 }
 
 const initial = {
@@ -129,6 +139,7 @@ const initial = {
   selectedId: null as string | null,
   lastReview: null as TicketReviewResult | null,
   projectId: null as string | null,
+  commenting: false,
 };
 
 export const useTicketStore = create<TicketState>((set, get) => ({
@@ -281,6 +292,25 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       return await api.previewTicket(resolved.org, resolved.project, address.externalId);
     } catch {
       return null;
+    }
+  },
+
+  comment: async (body) => {
+    const ticket = get().linked;
+    if (!ticket || get().commenting) return false;
+
+    set({ commenting: true });
+    try {
+      await api.commentTicket(ticket.id, body);
+      return true;
+    } catch (error) {
+      // Loudly, like linking: a publish that silently does nothing is the failure this feature
+      // already made once, and a board is exactly where "did it work?" cannot be answered by looking
+      // at the app.
+      pushErrorToast(String(error));
+      return false;
+    } finally {
+      set({ commenting: false });
     }
   },
 

@@ -25,7 +25,7 @@ import { CopyAnswer } from "../common/CopyAnswer";
 import { renderMarkdown } from "../../lib/markdown";
 import { FindingCard, QualityGateBadges, SHORT_SUMMARY_MAX } from "./FindingCard";
 import { ReviewLevelSelector } from "./ReviewLevelSelector";
-import { TicketVerdictPanel, VerdictSummary } from "./TicketVerdictPanel";
+import { PublishVerdict, TicketVerdictPanel, VerdictSummary } from "./TicketVerdictPanel";
 import { AiErrorBanner } from "./AiErrorBanner";
 import { AiRunLog } from "./AiRunLog";
 import type { Project } from "../../types/domain";
@@ -331,7 +331,15 @@ export function AnalyzeSection({ project }: { project: Project }) {
 
         {!loading && !cancelled && !error && parsed && (
           <div className="space-y-4">
-            {parsed.verdict && <TicketVerdictPanel verdict={parsed.verdict} />}
+            {parsed.verdict && (
+              <>
+                <TicketVerdictPanel verdict={parsed.verdict} />
+                {/* Under the verdict, not above it: the button is offered after the thing it
+                    publishes has been read. It sends `parsed.answer` — the same text rendered
+                    above — so what was approved is what lands on the board (`WI-022`). */}
+                <PublishVerdict body={parsed.answer} />
+              </>
+            )}
 
             {findings.length === 0 ? (
               summary.length > 0 && summary.length > SHORT_SUMMARY_MAX ? (

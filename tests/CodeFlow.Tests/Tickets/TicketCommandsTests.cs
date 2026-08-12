@@ -37,6 +37,7 @@ public sealed class TicketCommandsTests
         // than in `Ai/` because `Tickets/` already depends on `Ai/` — the other way round would
         // close a cycle between two features.
         "review_changes",
+        "comment_ticket",
     ];
 
     [Fact]
@@ -51,16 +52,20 @@ public sealed class TicketCommandsTests
     }
 
     [Fact]
-    public void Nothing_registered_here_writes_to_azure()
+    public void The_only_verb_here_that_writes_to_a_board_is_the_comment()
     {
-        // Read-only is a property of this slice, not a coincidence of what has been built so far.
-        // The write verbs are named so that adding one has to change this test deliberately.
+        // What this slice may do to somebody's board is a property of it, not a coincidence of what
+        // has been built so far. A comment is additive and undoes cleanly; a transition moves a card
+        // other people are looking at, and its state names belong to the project's process rather
+        // than to this app. Adding either has to change this test deliberately (`WI-022`).
         using var http = new HttpClient();
         var registry = new CommandRegistry().AddTicketCommands(database: null!, new AiRunRegistry((_, _, _) => ValueTask.CompletedTask), http);
 
+        Assert.Contains("comment_ticket", registry.Names);
+
         Assert.DoesNotContain(registry.Names, name =>
-            name.Contains("comment", StringComparison.Ordinal)
-            || name.Contains("transition", StringComparison.Ordinal)
-            || name.Contains("set_ticket_state", StringComparison.Ordinal));
+            name.Contains("transition", StringComparison.Ordinal)
+            || name.Contains("set_ticket_state", StringComparison.Ordinal)
+            || name.Contains("close_ticket", StringComparison.Ordinal));
     }
 }

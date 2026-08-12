@@ -100,8 +100,8 @@ document. An inline marker and its ledger row always agree because neither was r
 |---|---|---|
 | implementation files | 65 | `find `src/CodeFlow.App/` -name '*.rs' \| wc -l` |
 | the sidecar lines | 22 730 | `wc -l` over the same set |
-| Commands registered | 235 | 219 from the port's own parse (`analyze_working_changes` is gone), plus the 16 of `Tickets/TicketCommands.cs` |
-| Commands defined | 235 | same set, in both directions |
+| Commands registered | 236 | 219 from the port's own parse (`analyze_working_changes` is gone), plus the 17 of `Tickets/TicketCommands.cs` |
+| Commands defined | 236 | same set, in both directions |
 | Commands invoked by the frontend | 232 | 216 plus the same 16 wrappers |
 | Dead commands | 1 | `debug_is_running` |
 | Event names | 13 | `.emit(` call sites |

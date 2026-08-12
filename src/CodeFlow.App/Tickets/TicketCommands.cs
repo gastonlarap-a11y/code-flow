@@ -95,6 +95,16 @@ internal static class TicketCommands
 
             .Add("review_changes", async (p, ct) =>
                 Json(await ReviewAsync(database, runs, http, p, ct).ConfigureAwait(false),
+                    TicketJsonContext.Default.String))
+
+            // The one verb here that writes to a board. It carries the body rather than a run id on
+            // purpose: the button publishes the text the user just read, and deriving it again here
+            // would let the two drift (`WI-022`).
+            .Add("comment_ticket", async (p, ct) =>
+                Json(
+                    await TicketComment
+                        .PostAsync(database, http, Arg(p, "ticketId"), Arg(p, "body"), ct)
+                        .ConfigureAwait(false),
                     TicketJsonContext.Default.String));
 
     /// <summary>

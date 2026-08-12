@@ -22,12 +22,20 @@ two verdict headers and the two refusal prefixes are `XLANG-016` and `XLANG-017`
 `13-cross-language-contracts.md`; the finding format they sit beside is `XLANG-001` and belongs to
 `07-review-pipeline.md`.
 
-## Read-only, deliberately
+## One write, and it is a comment
 
-Nothing in this feature writes to Azure DevOps. Commenting and state transitions are specified but
-not built, at the user's explicit instruction, so a defect here cannot alter anybody's board.
-`TicketCommandsTests` asserts the absence of the write verbs rather than trusting it. The review it
-runs is local: it reads the work item, writes its own row, and posts nothing.
+Everything here reads, with a single exception: `comment_ticket` publishes a review verdict onto the
+work item, on a button press. That is the whole write surface, and `TicketCommandsTests` asserts both
+halves — that the comment is registered, and that no transition verb is.
+
+The line is drawn where it is because the two are not the same kind of change. A comment is additive
+and undoes cleanly: it appears at the bottom of a discussion and anyone can delete it. A state
+transition moves a card other people are looking at, and its legal states belong to the project's
+process — `New`/`Active`/`Resolved` under Agile, `Committed`/`Done` under Scrum — which is not
+something this app can name from the outside.
+
+The review itself still writes nothing. It reads the work item, writes its own row, and stops;
+publishing is a separate act the user takes afterwards.
 
 ## What the field survey found
 
@@ -191,6 +199,29 @@ true only because a run always was on its way — the section started one when i
 combination exists that does not auto-start, that reading leaves the panel spinning for ever. The
 premise is now named rather than assumed, which is the single change made to a state machine whose
 other rules each came out of a real failure.
+
+### WI-022 A verdict reaches the board only because somebody pressed a button
+**Implementation**: `Tickets/TicketComment.cs` · `Providers/Azure/AzureWorkItemClient.AddCommentAsync` ·
+`components/ai/TicketVerdictPanel.tsx` (`PublishVerdict`) · `state/ticketStore.ts` (`comment`)
+**Behaviour**: `comment_ticket(ticketId, body)` posts `body` as a comment on the linked work item and
+answers with its URL. It is never called by a review finishing. A review is run many times while work
+is in progress, and a board that collects every one of those attempts is worse than a board with
+nothing on it — so the verdict is rendered first and the button sits underneath it.
+**Inputs / outputs**: the **body travels from the renderer**, not a run id. The button publishes the
+text the user just read; letting the sidecar rebuild it from the stored row is how what was approved
+and what was posted come apart. `TicketComment.ToHtml` converts on the way out, because Azure
+comments are rich text and markdown arrives as its own punctuation — `## VERIFICACIÓN` and
+`**cumple**`, literally, on a page other people read. Escaping happens before any tag is added, so a
+verdict quoting a diff cannot close one.
+**Edge cases**: only `azure` tickets; a non-numeric external id, a blank body and a ticket no longer
+in the workspace are each refused by name. A publish in flight blocks a second press in the store
+rather than only on the button, because a duplicate comment cannot be taken back from inside the app.
+A refusal raises a toast — a publish that silently does nothing is the failure this feature already
+made once with linking. State transitions are **not** built, and their absence is asserted.
+**Frontend dependency**: `commentTicket`, `ticketStore.comment`, `ticketStore.commenting`.
+**Markers**: none. The round trip is covered against a real board by `AzureCommentEndToEndTests`,
+which is gated behind its own variable naming the exact work item it may write to — so a plain E2E
+run stays read-only.
 
 ### WI-021 A ticket on screen always says which branch's work it is
 **Implementation**: `TicketStore.List`, `TicketWithLinks`, `TicketDetail`, `WorkItemsView`, `ticketStore.load`

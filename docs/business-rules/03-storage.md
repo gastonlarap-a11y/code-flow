@@ -40,8 +40,8 @@ and has no fallback path: if step 1 or 2 fails the app does not start.
 
 ## Schema
 
-18 tables (`CREATE TABLE IF NOT EXISTS` count in `src/CodeFlow.App/Storage/Migrations.cs`), 7 indexes (6
-plain + 1 unique). Every table is created by one `conn.execute_batch(...)` call
+21 tables (`CREATE TABLE IF NOT EXISTS` count in `src/CodeFlow.App/Storage/Schema.cs`), 9 indexes (7
+plain + 2 unique). Every table is created by one `conn.execute_batch(...)` call
 (`src/CodeFlow.App/Storage/Migrations.cs`) run on every startup — `CREATE TABLE IF NOT EXISTS` makes each
 statement individually idempotent, which is the entire mechanism that makes re-running the
 batch safe. `PRAGMA foreign_keys = ON;` is the first statement in the batch and stays in
@@ -65,7 +65,13 @@ CREATE TABLE IF NOT EXISTS workspaces (
     -- Commit-identity override, both null = use the global identity (WS-008). Added by
     -- AddGitIdentityToWorkspaces for pre-existing databases.
     git_name    TEXT,
-    git_email   TEXT
+    git_email   TEXT,
+    -- Which Azure DevOps organisation and board project this workspace's tickets come from; null =
+    -- not chosen, and the resolution falls through to the project's own link (WI-005). The project
+    -- needs its own column because a repository hosted on GitHub has no projects.ado_project at
+    -- all. Both added by AddAdoOrgToWorkspaces for pre-existing databases.
+    ado_org     TEXT,
+    ado_project TEXT
 );
 `
 
@@ -404,13 +410,82 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_api_cookies_key
     ON api_cookies (workspace_id, domain, path, name);
 `
 
-That is 18 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
+### The work-item tables
+
+```sql
+CREATE TABLE IF NOT EXISTS tickets (
+    id             TEXT PRIMARY KEY,           -- {provider}:{org}:{project}:{external_id}
+    provider       TEXT NOT NULL DEFAULT 'azure',
+    org            TEXT NOT NULL,
+    project        TEXT NOT NULL,
+    external_id    TEXT NOT NULL,              -- TEXT: Azure numbers work items, Jira names them
+    title          TEXT NOT NULL,
+    state          TEXT NOT NULL,
+    work_item_type TEXT NOT NULL,
+    assigned_to    TEXT,
+    web_url        TEXT NOT NULL,
+    rev            INTEGER NOT NULL DEFAULT 0,
+    raw_json       TEXT NOT NULL DEFAULT '{}', -- what the mirror is rewritten from, with no fetch
+    mirror_path    TEXT NOT NULL,
+    synced_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_identity
+    ON tickets (provider, org, project, external_id);
+
+CREATE TABLE IF NOT EXISTS ticket_links (
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    branch      TEXT NOT NULL,
+    ticket_id   TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    linked_at   TEXT NOT NULL,
+    PRIMARY KEY (project_id, branch)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_review_runs (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workspace_id     TEXT NOT NULL,
+    ticket_id        TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    branch           TEXT NOT NULL,
+    base_ref         TEXT NOT NULL,
+    head_sha         TEXT NOT NULL,
+    level            TEXT NOT NULL,
+    meta             TEXT NOT NULL DEFAULT '{}',
+    review_md        TEXT NOT NULL,
+    diff             TEXT NOT NULL DEFAULT '',
+    findings         TEXT NOT NULL DEFAULT '[]',  -- same JSON shape as review_runs.findings
+    criteria         TEXT NOT NULL DEFAULT '[]',
+    coverage_verdict TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_review_runs_branch
+    ON ticket_review_runs (project_id, branch, created_at);
+```
+
+**`ticket_review_runs` is deliberately not `review_runs`.** That table's `pr_id` is
+`INTEGER NOT NULL` and its index and reconciliation machinery are keyed on a pull request that
+iterates. A pre-commit review has no pull request; a fake `pr_id` would corrupt
+`idx_review_runs_pr` for every reader treating the column as real, and making it nullable would be
+a schema change to a heavily loaded table. `findings` keeps `review_runs`' JSON shape on purpose,
+so the renderer's finding cards render either without knowing which table a run came from.
+
+**Where each parsed piece lands.** `criteria` holds the `AC-n` table as JSON — stored parsed rather
+than re-derived on read, because it came from a model's answer and re-parsing it later with a changed
+parser would silently rewrite history. `coverage_verdict` holds the single word (`completa` ·
+`incompleta` · `no verificable`), which is what a history list filters on; the sentences explaining
+it ride in `meta` beside the provider and the model that produced the run. `diff` is written and
+never selected by `TicketReviewStore.ForBranch` — it is the largest column in the table and it exists
+so a stored verdict is re-checkable, not so it can be listed. A row whose JSON will not parse still
+returns its `review_md`, so one bad row cannot take the list down. `WI-013`.
+
+That is 21 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
 `review_runs`, `workspace_skills`, `workspace_agents`, `workspace_mcps`, `app_settings`,
-`activity_log`, `job_history`, `conversation_titles`, `api_collections`, `api_folders`,
-`api_requests`, `api_environments`, `api_history`, `api_cookies`) and 7 indexes
+`activity_log`, `job_history`, `conversation_titles`, `tickets`, `ticket_links`,
+`ticket_review_runs`, `api_collections`, `api_folders`,
+`api_requests`, `api_environments`, `api_history`, `api_cookies`) and 9 indexes
 (`idx_review_runs_pr`, `idx_activity_log_project`, `idx_job_history_project`,
+`idx_tickets_identity`, `idx_ticket_review_runs_branch`,
 `idx_api_folders_parent`, `idx_api_requests_parent`,
-`idx_api_history_time`, `idx_api_cookies_key` — the last is `UNIQUE`).
+`idx_api_history_time`, `idx_api_cookies_key` — the last and `idx_tickets_identity` are `UNIQUE`).
 
 `idx_activity_log_project` and `idx_job_history_project` are **not** 1.7.2's. Both tables are
 append-only and never purged, and every read of either filters by `project_id` and orders by
@@ -550,7 +625,7 @@ an explicit `null`.
 
 | Struct | Fields (type) | Maps to |
 |---|---|---|
-| `Workspace` | `id: string`, `name: string`, `icon: string`, `color: string`, `sort_order: long`, `created_at: string`, `git_name: string?`, `git_email: string?` | `workspaces` row |
+| `Workspace` | `id: string`, `name: string`, `icon: string`, `color: string`, `sort_order: long`, `created_at: string`, `git_name: string?`, `git_email: string?`, `ado_org: string?`, `ado_project: string?` | `workspaces` row |
 | `Project` | `id: string`, `workspace_id: string`, `name: string`, `local_path: string`, `remote_url: string?`, `color: string`, `icon: string`, `ado_org/ado_project/ado_repo_id: string?`, `github_owner/github_repo/github_host: string?`, `sort_order: long`, `created_at: string` | `projects` row |
 | `NewProject` | Same fields as `Project` minus `id`/`sort_order`/`created_at` | Input DTO for `create_project` |
 | `ReviewContext` | `id`, `workspace_id`, `name`, `content: string`, `enabled: bool`, `created_at: string` | `review_contexts` row |

@@ -31,7 +31,7 @@ Contract (parameters, return types, injected state) is `01-ipc-surface.md`'s
 - `default_analyze_template` — returns `DEFAULT_ANALYZE_TEMPLATE` verbatim.
 - `default_pr_description_template` — returns `DEFAULT_PR_DESCRIPTION_TEMPLATE` verbatim.
 - `default_resolve_conflict_template` — returns `DEFAULT_RESOLVE_CONFLICT_TEMPLATE` verbatim.
-- `analyze_working_changes` — scans the working-directory diff (unstaged + untracked) for issues before commit; the job id doubles as the run id.
+- `review_changes` — reviews local changes over two axes: the diff (uncommitted, or the branch's whole contribution) and whether the branch's work item is judged too. The job id doubles as the run id. It replaced `analyze_working_changes`, whose body it still calls (`AiTurn.AnalyzeChangesAsync`) for the no-ticket half; every rule below written about `analyze_working_changes` describes that half and still holds. See `14-work-items.md` `WI-023`.
 - `resolve_finding_with_ai` — applies one review/analysis finding's fix directly to the working tree.
 - `send_chat_message` — one turn of the open-ended repo chat; resumes the engine's session when possible.
 - `inline_edit_with_ai` — rewrites an editor selection per a natural-language instruction; text in, text out, no tools.
@@ -399,6 +399,7 @@ and fix findings through opencode:
 | `Fix` | `fix` | "Fix with AI" on a finding | The only task that always needs an agentic, write-capable engine |
 | `Conflict` | `conflict` | AI merge-conflict resolution | Text-only (no tool use) — can route to a local model `Fix` can't use |
 | `Inline` | `inline` | Editor inline edit (Ctrl+I) | Text-only, runs while typing — a fast local model is the point |
+| — | `ticket_review` | Branch judged against its work item's acceptance criteria | Ninth key, added after the port. Call site is `src/CodeFlow.App/Tickets/TicketReview.cs` (`14-work-items.md`, `WI-011`); it is in `Judging`, so it inherits the `Read,Grep,Glob` default |
 
 ### Provider resolution (`provider_for`, `src/CodeFlow.App/Ai/AiCommands.cs`)
 
@@ -1468,6 +1469,14 @@ second bounded nothing — seventeen `Bash` calls in one measured review, with z
 **Edge cases**: a payload smaller than the OS pipe buffer (64 KiB) is reported delivered even if the child never read a byte — the kernel accepted it and there is nothing further to observe. Cancellation is unaffected: the writer's `OperationCanceledException` still propagates, and the guarded close cannot mask it. Engines whose CLI ignores stdin declare an empty payload, so the refusal never fires for them.
 **Frontend dependency**: none directly; the error text reaches the AI error banner like any other `AiRunFailedException`.
 **Markers**: none
+
+### AI-055 A run that never reached the network is repeated once, unless it could have written something
+**Implementation**: `src/CodeFlow.App/Ai/AiEngineRunner.cs` (`SubprocessAsync`, `Repeatable`, `AttemptAsync`) · `src/CodeFlow.App/Platform/TransientNetwork.cs`
+**Behaviour**: when a subprocess engine fails with a message `TransientNetwork.Matches` recognises — a name that would not resolve, a refused connection, an unreachable network — the whole attempt is made again, immediately and exactly once: the command is rebuilt, a new scratch brief is written, and a new process is spawned. Recognition is by **text**, which is unusual here and unavoidable: an AI CLI is a separate process whose entire account of itself is a line of English on stderr, so `agy` reporting `no such host` is not something anything can type against.
+**Inputs / outputs**: no wire change. A successful repeat is indistinguishable from a run that never failed; a second failure surfaces its own message, which is the same one the first would have shown.
+**Edge cases**: `AutoApproveEdits` **blocks the retry**, and that is the whole safety argument — this cannot know how far a write-capable run got before the network went, so repeating one that had already edited files would apply the change twice. A cancellation never reaches here (`OperationCanceledException` is caught a level up, in `RunAsync`), and a quota refusal is not in the table, so neither is ever repeated. The timeout is deliberately absent from the table too: it may mean the far side is still working.
+**Frontend dependency**: none. The point is that the panel never learns a retry happened.
+**Markers**: none. Written after a two-minute loss of DNS on 2026-08-12 destroyed a finished-but-unrun ticket review and two work-item reads; `PROV-049` is the same outage answered on the HTTP side.
 
 ## Test coverage
 

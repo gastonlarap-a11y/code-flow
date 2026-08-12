@@ -100,15 +100,15 @@ document. An inline marker and its ledger row always agree because neither was r
 |---|---|---|
 | implementation files | 65 | `find `src/CodeFlow.App/` -name '*.rs' \| wc -l` |
 | the sidecar lines | 22 730 | `wc -l` over the same set |
-| Commands registered | 220 | command registry, `src/CodeFlow.App/Program.cs` |
-| Commands defined | 220 | a registered command attributes, parsed signatures |
-| Commands invoked by the frontend | 217 | `invoke<…>("name")` in the two boundary files |
+| Commands registered | 235 | 219 from the port's own parse (`analyze_working_changes` is gone), plus the 16 of `Tickets/TicketCommands.cs` |
+| Commands defined | 235 | same set, in both directions |
+| Commands invoked by the frontend | 232 | 216 plus the same 16 wrappers |
 | Dead commands | 1 | `debug_is_running` |
 | Event names | 13 | `.emit(` call sites |
 | Event (name, producer) pairs | 19 | the four `debug:*` and the two `api:*` names have two producers each |
 | Emit call sites | 23 | — |
 | Rows in the event table | 20 | 19 pairs, with `git:progress` split into its stdout and stderr sites |
-| Tables | 18 | `CREATE TABLE IF NOT EXISTS` in `src/CodeFlow.App/Storage/Migrations.cs` |
+| Tables | 21 | `CREATE TABLE IF NOT EXISTS` in `src/CodeFlow.App/Storage/Schema.cs` |
 | extracted case functions | **133** across 25 files | 128 ` + 5 ` |
 | Secret-scan rules | **15** | 14 `new Rule(...)`(…)` literals plus the appended `generic` rule, `src/CodeFlow.App/Security/SecretScan.cs` |
 

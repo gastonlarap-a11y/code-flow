@@ -308,6 +308,41 @@ exception: `get_blob` (`src/CodeFlow.App/Providers/Azure/AzureClient.cs`) uses a
 `"Azure DevOps returned {status} reading a file"` (`src/CodeFlow.App/Providers/Azure/AzureClient.cs`) — the only error string in this
 file that doesn't carry the server's response text.
 
+### DIVERGENCE-PROV-c A sign-in page is summarised, not interpolated
+
+**Implementation**: `AzureClient.Readable`
+**Behaviour**: when a non-2xx body starts with `<!DOCTYPE` or `<html`, the interpolated body is
+replaced by *"the server answered with a sign-in page instead of the API. Check that the
+organisation name is right and that its token has not expired."* The status text is untouched, so
+`"Azure DevOps returned {status}: …"` and everything that parses that prefix are unchanged.
+**Why**: Azure answers an unknown organisation — and an unauthenticated request — with its sign-in
+**page**, a full HTML document with a base64 logo. 1.7.2 interpolates it whole, which puts tens of
+kilobytes of markup where an error toast goes. Measured while wiring the end-to-end tests: a
+mistyped organisation produced exactly that, and it made a wrong organisation name and an expired
+token indistinguishable to the person reading the screen — which is the failure this feature's
+users were most likely to hit first.
+**Edge cases**: deliberately narrow. A JSON error from the API is what actually explains a failure
+and is never replaced — `TF200016: project does not exist` still reaches the user verbatim.
+**Frontend dependency**: none new; the message is rendered wherever Azure errors already are.
+
+### DIVERGENCE-PROV-d The summary is posted at whichever end puts it on top
+
+**Implementation**: `IPullRequestHost.DiscussionNewestFirst`, `AzureHost`, `GitHubHost`, `ReviewPosting`
+**Behaviour**: a review's summary is published **before** the findings on GitHub and **after** them
+on Azure DevOps. The goal is identical on both — the summary is the first thing a reader meets,
+never a postscript to the conclusions it introduces — and the two hosts order their discussion
+oppositely, so reaching it means posting from opposite ends.
+**Why**: a user reported the summary landing at the bottom of an Azure pull request, under every
+finding it summarised. The code was already posting it first, deliberately and with a comment saying
+why; that reasoning was right for GitHub, whose conversation runs oldest-first, and exactly wrong for
+Azure's overview, which shows the newest thread on top.
+**Edge cases**: it is a property of the host rather than a constant, because a plain "post it last"
+would fix Azure and break GitHub — the same defect, moved. Both halves are pinned:
+`ReviewPostingTests.On_azure_the_summary_is_posted_last_so_that_it_reads_first` and
+`GitHubPostingTests.GitHubs_conversation_runs_oldest_first_so_the_summary_is_posted_first`. Both
+publication routes honour it — the project-linked one and the link-only one.
+**Frontend dependency**: none; the renderer sends one batch and does not choose the order.
+
 ### Path-segment percent-encoding
 
 `normalize_org` (`src/CodeFlow.App/Providers/Azure/AzureClient.cs`) accepts whatever the user saved as "organization" and reduces it
@@ -450,6 +485,102 @@ always treated. Ported as-is, inconsistency included — not fixed here.
   `get_latest_iteration_id`); `firstComparingIteration` is hardcoded to `1`.
 - `status: 1` (active) and `parentCommentId: 0` (root comment, no parent) are constant for every
   new thread.
+
+## Azure Boards (work items)
+
+`src/CodeFlow.App/Providers/Azure/AzureWorkItemClient.cs`, a sibling of `AzureClient` rather than
+part of it: pull requests and work items are separate features that share a host. They share the
+transport (`AzureClient.GetAsync`, `SendJsonAsync`, `OrgSegment`, `GetBytesAsync`), so a refused PAT
+is reported here exactly as `DIVERGENCE-PROV-b` specifies and organisation normalisation cannot
+drift between the two.
+
+**Read-only.** Nothing in this client writes to a board.
+
+| Operation | Call |
+|---|---|
+| One work item | `GET {org}/{project}/_apis/wit/workitems/{id}?$expand=all&api-version=7.1` |
+| Batch, max **200** ids | `POST .../wit/workitemsbatch?api-version=7.1`, `errorPolicy: omit` |
+| Query | `POST .../wit/wiql?$top=N&api-version=7.1` → **ids only** |
+| Teams | `GET {org}/_apis/projects/{project}/teams?api-version=7.1` |
+| Iterations | `GET .../{team}/_apis/work/teamsettings/iterations?api-version=7.1` |
+| Sprint contents | `GET .../iterations/{id}/workitems?api-version=**7.1-preview.1**` |
+| Work item types | `GET .../wit/workitemtypes?api-version=7.1` |
+| A type's fields | `GET .../wit/workitemtypes/{type}/fields?api-version=7.1` |
+| Comments (read) | `GET .../wit/workItems/{id}/comments?api-version=**7.1-preview.4**` |
+| Attachment | `GET {relation.url}?fileName=…&download=true&api-version=7.1` |
+| Web URL | `https://dev.azure.com/{org}/{project}/_workitems/edit/{id}` |
+
+### PROV-045 WIQL must name the project in its `WHERE` clause
+
+**Implementation**: `AzureWorkItemClient.QueryIdsAsync`
+**Behaviour**: the method takes an optional *condition*, never a whole query, and composes
+`SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{project}' [AND (…)]`. No caller
+can send a query without the project clause.
+**Why it is a rule and not a preference**: the project segment in the URL does not reliably filter
+the query, and what happens without the clause **differs by organisation**. Measured on 2026-08-10
+against two real ones:
+
+| Organisation | Clause-less query on the project-scoped URL |
+|---|---|
+| A (5 projects) | `HTTP 200`, correct `queryType: flat` and columns, **zero rows on every project** |
+| B | `HTTP 200`, **every work item the project had** |
+
+Neither is an error, and that is the trap: the first is indistinguishable from "this board is
+empty", and nothing announces which behaviour an organisation has. A rule that cannot be forgotten
+beats one that only bites on somebody else's tenant, so the client cannot express the clause-less
+form at all.
+**Edge cases**: a project name containing `'` is escaped by doubling, as WIQL requires; unescaped
+it is a syntax error surfacing as an opaque 400. The response carries ids whatever the `SELECT`
+names, so every query is followed by a batch read.
+
+### PROV-046 Two endpoints are preview-only, at different suffixes
+
+**Implementation**: `AzureWorkItemClient.CommentsApiVersion`, `IterationWorkItemsApiVersion`
+**Behaviour**: comments are pinned to `7.1-preview.4` and an iteration's work items to
+`7.1-preview.1`. A plain `7.1` is rejected on both with a 400 demanding the suffix — the same trap
+`connectionData` documents above.
+**Edge cases**: these are the two literals in the file most likely to be "tidied" into consistency
+with their neighbours. `AzureWorkItemClientTests` asserts both strings exactly.
+
+### PROV-047 A work item's fields cannot be a record
+
+**Implementation**: `RawWorkItem.Fields`
+**Behaviour**: an `IReadOnlyDictionary<string, JsonElement>`. Azure keys every field by reference
+name — `System.Title`, `Microsoft.VSTS.Common.AcceptanceCriteria` — and a customised process adds
+its own; one real board carries sixteen `Custom.*` fields, four of them named by GUID. The dots are
+not legal in a C# member name, and a fixed record would drop every custom field.
+**Edge cases**: values are not all strings — `System.AssignedTo` is an identity object and
+`System.CommentCount` a number — so reading one as the wrong type is a caller's decision where it
+matters rather than a deserialisation failure that loses the whole work item.
+
+### PROV-048 Work-item addresses are parsed apart from PR links
+
+**Implementation**: `src/CodeFlow.App/Providers/WorkItemLink.cs`
+**Behaviour**: accepts the work-item page on either host, any board URL carrying `?workitem=`, and
+a bare id or `AB#`. Organisation and project come back null for a bare id.
+**Edge cases**: it deliberately does **not** reuse `PrLink`'s splitter, which discards the query
+string — every board and taskboard URL carries the id there, and that is the URL most likely to be
+in a user's clipboard. A Jira key is refused rather than read as an Azure number.
+
+### PROV-049 A read that never left the machine is sent again; a write never is
+
+**Implementation**: `src/CodeFlow.App/Platform/TransientRetryHandler.cs` ·
+`src/CodeFlow.App/Platform/TransientNetwork.cs` · `src/CodeFlow.App/Program.cs` (composition)
+**Behaviour**: the one `HttpClient` the process owns wraps its `SocketsHttpHandler` in a handler that
+repeats a request once when it failed before reaching the far side — a name that would not resolve, a
+refused connection, an unreachable network. Every provider call is covered without any client knowing
+this exists.
+**Inputs / outputs**: **only requests with no body**, which is the same set as the reads. That one
+restriction does both jobs: nothing here can turn one posted comment, one approval or one pull
+request into two, and a request with no content is fully described by method, URI, version and
+headers — so the repeat is a freshly built message rather than a reused one whose content stream may
+already be spent. Headers are copied with `TryAddWithoutValidation`, so a retried call keeps the
+`Authorization` the first one had; losing it would surface as a credential problem, which is the most
+misleading thing this could do.
+**Edge cases**: a timeout is **not** in the table — it may mean the far side received the request and
+is still working on it. An outage that outlasts the repeat reports the original exception chain, so
+`StatusText.Reason` still finds the socket's own words for the message the user reads. `AI-055` is
+the same outage answered on the AI-CLI side.
 
 ## PR link parsing
 

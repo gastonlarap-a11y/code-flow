@@ -25,6 +25,7 @@ This file is the index. The content lives in `business-rules/`.
 | 11 | [Files, search, watcher, terminal](business-rules/11-files-search-terminal.md) | File operations, search, the watcher, the PTY |
 | 12 | [Debugging](business-rules/12-debugging.md) | DAP and the debugger backends — **deferred, not implemented** |
 | 13 | [Cross-language contracts](business-rules/13-cross-language-contracts.md) | Literals duplicated in C# and TypeScript |
+| 14 | [Work items](business-rules/14-work-items.md) | `src/CodeFlow.App/Tickets/` — linking a branch to its ticket, the on-disk mirror, and the review that judges the branch against its acceptance criteria |
 | 90 | [Ambiguities](business-rules/90-ambiguities.md) | What is unsettled, and what has never run against a real system |
 | 91 | [Preserved behaviours](business-rules/91-known-bugs.md) | 22 defects kept for 1.7.2 compatibility, **not fixed** |
 | — | [Test vectors](business-rules/test-vectors/README.md) | 24 fixture files + 3 SQL seeds, 133 cases |

@@ -264,7 +264,7 @@ dependencies; it is not part of the payload.
 | `default_analyze_template`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs`</sub> | — | `string` | — | `defaultAnalyzeTemplate` |
 | `default_pr_description_template`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs`</sub> | — | `string` | — | `defaultPrDescriptionTemplate` |
 | `default_resolve_conflict_template`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs`</sub> | — | `string` | — | `defaultResolveConflictTemplate` |
-| `analyze_working_changes`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs` · async</sub> | `project_id: string`<br>`job_id: string`<br>`// When an SDD/Harness agent runs this analysis`<br>`its provider + model + prompt for this run. agent_provider: Option&lt;string&gt;`<br>`agent_model: Option&lt;string&gt;`<br>`agent_prompt: Option&lt;string&gt;` | `Result&lt;string, string&gt;` | AppHandle, State | `analyzeWorkingChanges` |
+| ~~`analyze_working_changes`~~ | — | — | — | Superseded by `review_changes` (`Tickets/TicketCommands.cs`), which carries the scope and the ticket axes together. Its body still lives in `AiTurn.AnalyzeChangesAsync`. |
 | `resolve_finding_with_ai`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs` · async</sub> | `project_id: string`<br>`finding_prompt: string`<br>`run_id: Option&lt;string&gt;` | `Result&lt;string, string&gt;` | AppHandle, State | `resolveFindingWithAi` |
 | `send_chat_message`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs` · async</sub> | `project_id: string`<br>`message: string`<br>`session_id: Option&lt;string&gt;`<br>`conversation_id: Option&lt;string&gt;`<br>`run_id: Option&lt;string&gt;`<br>`agent_provider: Option&lt;string&gt;`<br>`agent_model: Option&lt;string&gt;`<br>`agent_prompt: Option&lt;string&gt;` | `Result&lt;ChatReply, string&gt;` | AppHandle, State | `sendChatMessage` |
 | `inline_edit_with_ai`<br><sub>`src/CodeFlow.App/Ai/AiCommands.cs` · async</sub> | `rel_path: string`<br>`file_content: string`<br>`selection: string`<br>`instruction: string`<br>`run_id: Option&lt;string&gt;` | `Result&lt;string, string&gt;` | AppHandle, State | `inlineEditWithAi` |
@@ -401,3 +401,27 @@ dependencies; it is not part of the payload.
 | `api_pick_file`<br><sub>`src/CodeFlow.App/ApiClient/ApiCommands.cs` · async</sub> | `extensions: Vec&lt;string&gt;` | `Option&lt;string&gt;` | AppHandle | `apiPickFile` |
 | `api_save_file`<br><sub>`src/CodeFlow.App/ApiClient/ApiCommands.cs` · async</sub> | `default_name: string`<br>`contents: string` | `Result&lt;Option&lt;string&gt;, string&gt;` | AppHandle | `apiSaveFile` |
 | `api_read_text_file`<br><sub>`src/CodeFlow.App/ApiClient/ApiCommands.cs`</sub> | `path: string` | `Result&lt;string, string&gt;` | — | `apiReadTextFile` |
+
+### `src/CodeFlow.App/Tickets/TicketCommands.cs` — 13 commands → [14-work-items](14-work-items.md)
+
+Every command here reads. Commenting and state transitions are a later, separately requested step,
+so nothing on this surface can alter a board.
+
+| Command | Caller parameters | Returns | Injected | TS wrapper |
+|---|---|---|---|---|
+| `update_workspace_ticket_account`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `workspaceId: string`<br>`org: Option&lt;string&gt;`<br>`project: Option&lt;string&gt;` | `()` | State | `updateWorkspaceTicketAccount` |
+| `resolve_ticket_account`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string` | `TicketAccount` | State | `resolveTicketAccount` |
+| `resolve_ticket_link`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `text: string` | `Option&lt;TicketLinkRef&gt;` | — | `resolveTicketLink` |
+| `suggest_ticket_for_branch`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `branch: string` | `Option&lt;TicketSuggestion&gt;` | — | `suggestTicketForBranch` |
+| `sync_ticket`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs` · async</sub> | `org: string`<br>`project: string`<br>`externalId: string` | `Result&lt;Ticket, string&gt;` | State, HttpClient | `syncTicket` |
+| `get_ticket`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `ticketId: string` | `Option&lt;Ticket&gt;` | State | `getTicket` |
+| `list_tickets`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string` | `Vec&lt;TicketWithLinks&gt;` | State | `listTickets` |
+| `get_ticket_criteria`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `ticketId: string` | `TicketCriteria` | State | `getTicketCriteria` |
+| `link_branch_ticket`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string`<br>`branch: string`<br>`ticketId: string` | `()` | State | `linkBranchTicket` |
+| `unlink_branch_ticket`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string`<br>`branch: string` | `()` | State | `unlinkBranchTicket` |
+| `ticket_for_branch`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string`<br>`branch: string` | `Option&lt;Ticket&gt;` | State | `ticketForBranch` |
+| `list_sprint_tickets`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs` · async</sub> | `org: string`<br>`project: string`<br>`team: Option&lt;string&gt;` | `Result&lt;Vec&lt;TicketSummary&gt;, string&gt;` | HttpClient | `listSprintTickets` |
+| `list_my_tickets`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs` · async</sub> | `org: string`<br>`project: string` | `Result&lt;Vec&lt;TicketSummary&gt;, string&gt;` | HttpClient | `listMyTickets` |
+| `preview_ticket`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs` · async</sub> | `org: string`<br>`project: string`<br>`externalId: string` | `Result&lt;Option&lt;TicketSummary&gt;, string&gt;` | HttpClient | `previewTicket` |
+| `list_ticket_reviews`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs`</sub> | `projectId: string`<br>`branch: string` | `Result&lt;Vec&lt;TicketReviewResult&gt;, string&gt;` | Database | `listTicketReviews` |
+| `review_changes`<br><sub>`src/CodeFlow.App/Tickets/TicketCommands.cs` · async</sub> | `projectId: string`<br>`jobId: string`<br>`branch: string`<br>`scope: "working" \| "branch"`<br>`withTicket: bool`<br>`baseRef: Option&lt;string&gt;`<br>`level: string`<br>`agentProvider: Option&lt;string&gt;`<br>`agentModel: Option&lt;string&gt;`<br>`agentPrompt: Option&lt;string&gt;` | `Result&lt;string, string&gt;` | Database, AiRunRegistry, HttpClient | `reviewChanges` |

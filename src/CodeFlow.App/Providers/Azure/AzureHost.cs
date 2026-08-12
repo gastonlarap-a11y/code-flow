@@ -111,6 +111,14 @@ internal sealed class AzureHost(HttpClient http, string org, string project, str
     public Task PostSummaryAsync(long prId, string content, CancellationToken cancellationToken) =>
         AzureClient.PostCommentAsync(http, org, project, repoId, prId, content, pat, cancellationToken);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Azure's pull-request overview puts the most recent thread at the top, so the summary is
+    /// posted <em>after</em> the findings to end up above them. Measured on a real pull request:
+    /// posted first, it sat at the bottom under every finding it summarised.
+    /// </remarks>
+    public bool DiscussionNewestFirst => true;
+
     public Task<IReadOnlyList<PrCommentThread>> ListCommentThreadsAsync(
         long prId, CancellationToken cancellationToken) =>
         AzureClient.ListCommentThreadsAsync(http, org, project, repoId, prId, pat, cancellationToken);

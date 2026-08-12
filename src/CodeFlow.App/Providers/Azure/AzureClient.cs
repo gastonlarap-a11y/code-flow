@@ -1037,7 +1037,36 @@ public static class AzureClient
             is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden;
 
         throw new AzureException(
-            $"Azure DevOps returned {StatusText.Of(response.StatusCode)}: {body}", unauthorized);
+            $"Azure DevOps returned {StatusText.Of(response.StatusCode)}: {Readable(body)}", unauthorized);
+    }
+
+    /// <summary>
+    /// The response body, or a sentence when the body is a web page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>DIVERGENCE-PROV-c</c>.</b> Azure answers an unknown organisation, and an unauthenticated
+    /// request, with its sign-in <em>page</em> — a full HTML document. Interpolating it whole, which
+    /// is what 1.7.2 did and what this client did until now, makes the error message tens of
+    /// kilobytes of markup and a base64 logo. Observed for real: a 404 for a mistyped organisation
+    /// rendered as an entire HTML document where an error toast should be.
+    /// </para>
+    /// <para>
+    /// The status code stays exactly as it was, so nothing that parses the prefix changes. Only the
+    /// body is replaced, and only when it is unmistakably a page rather than an API error — a JSON
+    /// error from the API is what actually explains a failure and is never touched.
+    /// </para>
+    /// </remarks>
+    private static string Readable(string body)
+    {
+        var start = body.AsSpan().TrimStart();
+        var isPage = start.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
+            || start.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
+
+        return isPage
+            ? "the server answered with a sign-in page instead of the API. Check that the "
+              + "organisation name is right and that its token has not expired."
+            : body;
     }
 
     /// <summary>The body as text, or empty when it cannot be read — never a failure of its own.</summary>

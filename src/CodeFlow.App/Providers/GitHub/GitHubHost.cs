@@ -93,6 +93,13 @@ internal sealed class GitHubHost(HttpClient http, string host, string owner, str
     public Task PostSummaryAsync(long prId, string content, CancellationToken cancellationToken) =>
         GitHubClient.PostCommentAsync(http, host, owner, repo, prId, content, token, cancellationToken);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// GitHub's conversation runs oldest first, so the summary is posted before the findings and
+    /// stays above them — the order this code always had, and which is correct here.
+    /// </remarks>
+    public bool DiscussionNewestFirst => false;
+
     public Task<IReadOnlyList<PrCommentThread>> ListCommentThreadsAsync(
         long prId, CancellationToken cancellationToken) =>
         GitHubClient.ListCommentThreadsAsync(http, host, owner, repo, prId, token, cancellationToken);

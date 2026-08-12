@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using CodeFlow.Providers;
 using CodeFlow.Providers.Azure;
 using Xunit;
 
@@ -648,8 +647,8 @@ public sealed class AzureClientTests
     {
         // Half of DIVERGENCE-PROV-b, and the half that did not change. CodeFlow 1.7.2 collapses every
         // non-2xx into one message shape; only the credential case was worth diverging over, so a 404
-        // is still a 404 and reads exactly as it always did — including the HTML error page an unknown
-        // organisation returns, interpolated whole.
+        // is still a 404 and an API error body still reads exactly as it always did. (The HTML
+        // sign-in *page* is the one exception — DIVERGENCE-PROV-c, below.)
         using var handler = new FakeHttpHandler().Respond(status, """{"message":"nope"}""");
         using var http = handler.Client();
 
@@ -659,6 +658,43 @@ public sealed class AzureClientTests
         Assert.Equal($"Azure DevOps returned {rendered}: {{\"message\":\"nope\"}}", failure.Message);
         Assert.False(failure.Unauthorized);
         Assert.DoesNotContain(AzureException.RefusedPrefix, failure.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("<!DOCTYPE html><html><head><title>Sign in</title></head><body>…</body></html>")]
+    [InlineData("\n  <html lang=\"en\"><body>a whole page</body></html>")]
+    public async Task A_sign_in_page_is_summarised_instead_of_becoming_the_error_message(string page)
+    {
+        // DIVERGENCE-PROV-c. Azure answers an unknown organisation with its sign-in page, and
+        // interpolating it whole makes the error tens of kilobytes of markup and a base64 logo.
+        // Observed for real: a mistyped organisation rendered an entire HTML document where an
+        // error toast should be, which is also why a wrong org and an expired token were
+        // indistinguishable to the person reading it.
+        using var handler = new FakeHttpHandler().Respond(HttpStatusCode.NotFound, page, "text/html");
+        using var http = handler.Client();
+
+        var failure = await Assert.ThrowsAsync<AzureException>(
+            () => AzureClient.ListProjectsAsync(http, Org, Pat, Ct));
+
+        // The status is untouched: anything parsing the prefix keeps working.
+        Assert.StartsWith("Azure DevOps returned 404 Not Found: ", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("<html", failure.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("organisation name is right", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_json_error_from_the_api_is_still_reported_verbatim()
+    {
+        // The narrowness of the divergence: a real API error is what explains a failure, so it is
+        // never replaced. Only an actual page is.
+        using var handler = new FakeHttpHandler().Respond(
+            HttpStatusCode.NotFound, """{"message":"TF200016: project does not exist"}""");
+        using var http = handler.Client();
+
+        var failure = await Assert.ThrowsAsync<AzureException>(
+            () => AzureClient.ListProjectsAsync(http, Org, Pat, Ct));
+
+        Assert.Contains("TF200016", failure.Message, StringComparison.Ordinal);
     }
 
     [Theory]

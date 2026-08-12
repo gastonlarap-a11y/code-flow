@@ -21,6 +21,10 @@ public sealed class WorkItemLinkTests
     [InlineData("https://dev.azure.com/achsdev/Web/_workitems/426647", 426647, "achsdev", "Web")]
     // A trailing slash, a fragment and a query the path form does not need.
     [InlineData("https://dev.azure.com/achsdev/Web/_workitems/edit/426647/?_a=history#c1", 426647, "achsdev", "Web")]
+    // The exact address a user pasted when linking failed, trailing slash included. It parsed
+    // correctly all along — the failure was downstream, where the organisation and project this
+    // returns were being thrown away (`WI-019`). Pinned so the innocent half stays innocent.
+    [InlineData("https://dev.azure.com/kakaroto044/app-personales/_workitems/edit/3/", 3, "kakaroto044", "app-personales")]
     public void A_work_item_page_gives_up_all_three_parts(string url, long id, string org, string project)
     {
         var reference = WorkItemLink.Parse(url);

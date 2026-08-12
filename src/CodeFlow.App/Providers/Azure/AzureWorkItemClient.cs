@@ -129,13 +129,17 @@ internal static class AzureWorkItemClient
     /// <para>
     /// <b><c>WIQL-001</c>: the project clause is not optional, and this signature is why.</b> A query
     /// is assembled here from a <paramref name="condition"/> rather than accepted whole, so no caller
-    /// can send one without <c>WHERE [System.TeamProject] = …</c>. Measured against a real
-    /// organisation on 2026-08-10: the same query without that clause, posted to the
-    /// <em>project-scoped</em> URL, returns <c>HTTP 200</c> with a well-formed body, correct
-    /// <c>queryType</c>, correct columns — and zero rows, on every project in the organisation. The
-    /// path segment does not filter the query. That failure is indistinguishable from "this project
-    /// has no work items", which is exactly why it must be impossible to write rather than something
-    /// to remember.
+    /// can send one without <c>WHERE [System.TeamProject] = …</c>.
+    /// <para>
+    /// <b>The project segment in the URL does not reliably filter the query, and what it does
+    /// instead varies by organisation.</b> Measured on 2026-08-10 against two real ones: in the
+    /// first, the clause-less query posted to the project-scoped URL returned <c>HTTP 200</c> with a
+    /// well-formed body, the right <c>queryType</c> and columns — and <em>zero</em> rows, on all five
+    /// of its projects. In the second, the same request returned every work item the project had.
+    /// Neither answer is an error; the point is that neither is dependable, and the first is
+    /// indistinguishable from "this board is empty". A rule nobody can forget beats a rule that only
+    /// bites on somebody else's organisation.
+    /// </para>
     /// </para>
     /// <para>
     /// The response carries ids whatever the <c>SELECT</c> names, so callers follow this with

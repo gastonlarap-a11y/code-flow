@@ -162,11 +162,12 @@ public sealed class ReviewPostingTests
     }
 
     [Fact]
-    public async Task The_summary_is_posted_first_and_as_its_own_conversation_comment()
+    public async Task On_azure_the_summary_is_posted_last_so_that_it_reads_first()
     {
-        // Order is the assertion. A summary posted after its own findings reads as a postscript to
-        // them: on the pull request it lands at the bottom of the timeline, under the very comments
-        // it exists to introduce.
+        // Order is the assertion, and which order depends on the host. The goal never changes — the
+        // summary is the first thing read, not a postscript to the findings it introduces — but
+        // Azure's overview shows the newest thread at the top, so getting there means posting it
+        // last. `DIVERGENCE-PROV-d`; `ReviewPostingFromLinkTests` covers the same for the link path.
         using var fixture = new Fixture(Finding("F-001", "src/auth.ts", "Seguridad"));
         fixture.OnPost("""{"id":501}""");
 
@@ -175,13 +176,11 @@ public sealed class ReviewPostingTests
             Item("src/auth.ts", "Seguridad", "hallazgo"));
 
         Assert.Equal(2, fixture.Requests.Count);
+        Assert.Contains("hallazgo", fixture.Requests[0].Body!, StringComparison.Ordinal);
         Assert.Equal(
             "2 hallazgos, 1 bloqueante",
-            JsonDocument.Parse(fixture.Requests[0].Body!).RootElement
+            JsonDocument.Parse(fixture.Requests[1].Body!).RootElement
                 .GetProperty("comments").EnumerateArray().Single().GetProperty("content").GetString());
-
-        // And the finding really did follow it, rather than the summary being the only thing sent.
-        Assert.Contains("hallazgo", fixture.Requests[1].Body!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -230,9 +229,10 @@ public sealed class ReviewPostingTests
         using var fixture = new Fixture(Finding("F-001", "src/auth.ts", "Seguridad"));
         fixture.Iterations();
 
-        // The summary goes first now, so it is the first queued response that answers it.
-        fixture.Handler.Respond(HttpStatusCode.Forbidden, "no permission");
+        // On Azure the summary goes last, so the finding's response is queued first and the refusal
+        // is what answers the summary.
         fixture.Handler.Json("""{"id":501}""");
+        fixture.Handler.Respond(HttpStatusCode.Forbidden, "no permission");
 
         var failure = await Assert.ThrowsAsync<ReviewException>(() => fixture.PublishAsync(
             postSummary: true, summary: "resumen", Item("src/auth.ts", "Seguridad", "hallazgo")));

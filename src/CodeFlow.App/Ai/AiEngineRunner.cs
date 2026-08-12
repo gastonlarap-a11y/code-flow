@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using CodeFlow.Ai.Engines;
+using CodeFlow.Platform;
 
 namespace CodeFlow.Ai;
 
@@ -90,6 +91,35 @@ internal static class AiEngineRunner
     }
 
     private static async Task<AiRun> SubprocessAsync(
+        IAiEngine engine,
+        string binary,
+        AiInvocation invocation,
+        AiRunContext? run,
+        AiRunRegistry runs,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await AttemptAsync(engine, binary, invocation, run, runs, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (AiRunFailedException failure) when (Repeatable(failure, invocation))
+        {
+            // Once, immediately, and only for a run that was never going to change anything. The
+            // CLI died before it reached its own backend, so it did no work and produced no partial
+            // output — but this cannot know how far a *write* run got, and repeating one that had
+            // already edited files would apply the same change twice. `AutoApproveEdits` is the
+            // app's own statement of which runs those are.
+            return await AttemptAsync(engine, binary, invocation, run, runs, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Whether a failed attempt may simply be made again.</summary>
+    private static bool Repeatable(AiRunFailedException failure, AiInvocation invocation) =>
+        !invocation.AutoApproveEdits && TransientNetwork.Matches(failure.Message);
+
+    private static async Task<AiRun> AttemptAsync(
         IAiEngine engine,
         string binary,
         AiInvocation invocation,

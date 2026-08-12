@@ -10,6 +10,21 @@ import { ACCENT_OPTIONS } from "../../state/accentStore";
 export const PROJECT_COLORS: readonly string[] = ACCENT_OPTIONS.map((option) => option.light);
 
 /**
+ * The indigo every repository used to be created with.
+ *
+ * It is recognisable as "never chosen" precisely because it is **not** in the palette — the picker's
+ * indigo is `#6260ff`. Nothing the swatch picker can produce equals this, so a repository still
+ * carrying it was defaulted by the three creation sites that wrote the literal, never picked by
+ * anybody. That is what makes recolouring these safe and recolouring everything else not.
+ */
+export const LEGACY_DEFAULT_COLOR = "#6366f1";
+
+/** Whether a stored colour is the old hardcoded default rather than a choice. */
+export function isLegacyDefault(color: string): boolean {
+  return color.toLowerCase() === LEGACY_DEFAULT_COLOR;
+}
+
+/**
  * The colour a newly added repository should take.
  *
  * Every creation site used to write `#6366f1` by hand, so every repository in the sidebar was the

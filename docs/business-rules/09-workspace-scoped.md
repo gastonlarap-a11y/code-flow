@@ -615,14 +615,20 @@ only place that knows which colours are taken. A caller may still name one.
 sequence: a counter keeps advancing past colours freed by a removed repository and starts repeating
 while some go unused. Ties break by palette order, so the same set of existing colours always gives
 the same answer.
-**Edge cases**: existing repositories are **not** recoloured — nothing distinguishes a colour someone
-chose from one that was defaulted, and rewriting the second would silently rewrite the first. A
-colour outside the palette is ignored when counting rather than handed back out. Contrast needs no
+**Edge cases**: repositories added before this are recoloured on load, and **only** those still
+carrying the old literal `#6366f1`. That value is the one thing that cannot have been chosen — the
+picker offers eight hues and its indigo is `#6260ff` — so it identifies a default without guessing,
+which is what makes doing it silently acceptable where a blanket pass would not be. Naturally
+idempotent: after the first load nothing matches. A colour that cannot be saved leaves its
+repository as it was, rather than showing one the next launch will not remember. A colour outside
+the palette is ignored when counting rather than handed back out. Contrast needs no
 new measurement: the picker only ever offered these eight, and `accentStore.test.ts` already holds
 each to 4.5:1 as ink through `lib/ui/contrast.ts` — which is how a repository's colour is used
 everywhere except the sidebar chip, whose fill-plus-white-glyph pairing is left alone.
-**Frontend dependency**: the icon is tinted in Home's recent projects, in each Settings project row
-and in the command palette; the sidebar and the header pill already were.
+**Frontend dependency**: the icon is tinted everywhere a repository appears — the sidebar row,
+Home's recent projects, each Settings project row and the command palette. The sidebar was a filled
+chip with a hardcoded white glyph, which is the fill/foreground pair `renderer-ui.md` warns must
+move together; it is now a tinted glyph like the header pill, so one treatment covers every place.
 **Markers**: none.
 
 ## Rules

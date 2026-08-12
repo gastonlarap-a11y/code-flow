@@ -83,8 +83,12 @@ export function ProjectRow({ project }: { project: Project }) {
             : "text-[var(--cf-text-muted)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
         }`}
       >
-        {/* The project's colour chip and its "reveal in the file manager" button are one control.
-            It keeps the swatch background, so the colour beats the variant's own text colour. */}
+        {/* The project's colour and its "reveal in the file manager" button are one control.
+            The colour is the glyph's, not a fill behind it: a filled chip with a hardcoded white
+            icon is the fill/foreground pair `renderer-ui.md` warns about, and it read as a coloured
+            square rather than as this repository's folder. Tinting the glyph is what the header
+            pill and the breadcrumb already do, and the eight hues the picker offers are measured as
+            ink at 4.5:1 by `accentStore.test.ts`. */}
         <IconButton
           label="sidebar.revealInFileManager"
           icon={Folder}
@@ -98,8 +102,8 @@ export function ProjectRow({ project }: { project: Project }) {
               setRevealing(false);
             }
           }}
-          className="shrink-0 !text-white"
-          style={{ background: project.color }}
+          className="shrink-0"
+          style={{ color: project.color }}
         />
         {/* `h-6`, not the intrinsic height of one line of text: this is the row's primary action
             and it was a 20px-tall target. */}

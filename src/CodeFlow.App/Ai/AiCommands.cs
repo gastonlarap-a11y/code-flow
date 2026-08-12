@@ -146,18 +146,9 @@ public static class AiCommands
                     AiTurn.CheckpointAfter(project.LocalPath, checkpoint);
                 }
             })
-            .Add("analyze_working_changes", async (parameters, cancellationToken) =>
-            {
-                var text = await AiTurn.AnalyzeWorkingChangesAsync(
-                    database,
-                    Runner(runs, http),
-                    Arg(parameters, "projectId"),
-                    Arg(parameters, "jobId"),
-                    Agent(parameters),
-                    cancellationToken).ConfigureAwait(false);
-
-                return Json(text, AiJsonContext.Default.String);
-            })
+            // `analyze_working_changes` used to be registered here. It is now one half of
+            // `review_changes` (`Tickets/TicketCommands.cs`), which carries the two axes the panel
+            // exposes; the body it called still lives in `AiTurn`, refusal rules and all.
             .Add("send_chat_message", async (parameters, cancellationToken) =>
             {
                 var reply = await AiTurn.SendChatMessageAsync(

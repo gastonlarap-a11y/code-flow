@@ -219,7 +219,7 @@ task-routing half of this table against its TypeScript mirror in detail (includi
 | Key (VERBATIM) | Read by | Missing/blank falls back to |
 |---|---|---|
 | `ai_provider` | `src/CodeFlow.App/Ai/AiCommands.cs` (`active_provider`) | `"claude"` |
-| `ai_provider_{task}` — 8 keys, `task ∈ {commit, analyze, review, pr_description, chat, fix, conflict, inline}` (`AiTask.key()`, `src/CodeFlow.App/Ai/AiCommands.cs`) | `src/CodeFlow.App/Ai/AiCommands.cs` (`provider_for`) | the global `ai_provider` |
+| `ai_provider_{task}` — 9 keys, `task ∈ {commit, analyze, review, pr_description, chat, fix, conflict, inline, ticket_review}` (`AiRouting.Tasks`, `src/CodeFlow.App/Ai/AiRouting.cs`) | `src/CodeFlow.App/Ai/AiCommands.cs` (`provider_for`) | the global `ai_provider` |
 | `{provider}_{task}_model` | `src/CodeFlow.App/Ai/AiCommands.cs` (`load_ai_config`) | for `task = commit`: the engine's `commit_message_model()` if non-empty, else `{provider}_model`; for every other task: `{provider}_model` |
 | `{provider}_model` | `src/CodeFlow.App/Ai/AiCommands.cs` | `""` |
 | `{provider}_binary_path` | `src/CodeFlow.App/Ai/AiCommands.cs` | `engine.default_binary()` |
@@ -278,8 +278,15 @@ actual cascade, verified against `src/CodeFlow.App/Activity/ActivityLogStore.cs`
    its `content` is non-blank after `.trim()`.
 2. Otherwise, **the hardcoded builtin constant** for `kind` — `workspace_prompt_default`
    (`src/CodeFlow.App/Activity/ActivityLogStore.cs`): `"pr_description"` → ai.DEFAULT_PR_DESCRIPTION_TEMPLATE;
+   `"ticket_review_standard"` → `Prompts.DefaultTicketReviewStandard`;
    `"sdd_stages"` → `""` (no builtin text exists for this kind — see the edge case below);
    anything else, including `"review_standard"`, → ai.DEFAULT_PR_REVIEW_STANDARD.
+
+**`ticket_review_standard` needs its own arm because the catch-all is not an error case.** A kind
+without an arm resolves to the PR methodology and nothing fails, so "restore default" on the ticket
+standard would have silently handed back a prompt that never mentions a work item — a review that
+quietly stops reporting acceptance criteria, which reads as the model refusing.
+`SettingsTests.The_ticket_review_standard_does_not_fall_through_to_the_pr_one` pins it (`WI-011`).
 
 There is no third "global" step and no first-match-wins search across multiple candidate sources
 — it is exactly these two, and step 2 is a compile-time constant, not a stored/versioned row. A
@@ -287,9 +294,10 @@ blank save (`set_workspace_prompt(…, content: "")`) is how "restore default" w
 row's content back to blank, and step 2 kicks back in on the next read; the row itself is never
 deleted, `ON CONFLICT(workspace_id, kind) DO UPDATE` overwrites it in place.
 
-`create_workspace` (`src/CodeFlow.App/Activity/ActivityLogStore.cs`) seeds both `review_standard` and `pr_description` rows
+`create_workspace` (`src/CodeFlow.App/Activity/ActivityLogStore.cs`) seeds `review_standard`,
+`ticket_review_standard` and `pr_description` rows
 with their builtin defaults at workspace creation, so a fresh workspace's `workspace_prompts` table
-already has real (non-blank) text for both — the fallback in step 2 only actually fires for
+already has real (non-blank) text for all three — the fallback in step 2 only actually fires for
 workspaces created before this seeding existed, backfilled by
 `backfill_workspace_prompts` (`src/CodeFlow.App/Storage/Migrations.cs`, an `INSERT OR IGNORE` per workspace that
 lacks a row for either kind), or if a save later blanks the row out again. `sdd_stages` is **never**

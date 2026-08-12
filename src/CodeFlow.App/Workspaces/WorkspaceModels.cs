@@ -18,6 +18,11 @@ namespace CodeFlow.Workspaces;
 /// <c>GitName</c>/<c>GitEmail</c> are the workspace's commit-identity override (WS-008): both
 /// null means "use the global git identity". They are only ever set or cleared as a pair.
 /// </para>
+/// <para>
+/// <c>AdoOrg</c>/<c>AdoProject</c> are where this workspace's <em>tickets</em> live (WS-009,
+/// <c>WI-005</c>). Independent of every project link: the board is not necessarily where the code
+/// is, and a workspace whose repositories are on GitHub has no other place to say it at all.
+/// </para>
 /// </remarks>
 public sealed record Workspace(
     string Id,
@@ -27,7 +32,9 @@ public sealed record Workspace(
     long SortOrder,
     string CreatedAt,
     string? GitName,
-    string? GitEmail);
+    string? GitEmail,
+    string? AdoOrg,
+    string? AdoProject);
 
 /// <summary>A repository registered under a workspace.</summary>
 /// <remarks>

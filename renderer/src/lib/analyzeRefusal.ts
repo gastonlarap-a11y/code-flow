@@ -44,3 +44,34 @@ export function isRefusal(job: RefusableJob): boolean {
     job.error.message === LEGACY_NOTHING_TO_ANALYZE
   );
 }
+
+/**
+ * "This branch has no ticket" — the ticket review's own refusal.
+ *
+ * A byte-level contract with `TicketReview.NotLinkedPrefix` (`XLANG-017`). Like
+ * `NOTHING_TO_ANALYZE: `, it is a state and not a failure: the section shows "link a ticket first"
+ * rather than a red banner, and the row does not stand in for the branch's last real review.
+ */
+export const TICKET_NOT_LINKED_PREFIX = "TICKET_NOT_LINKED: ";
+
+/**
+ * "The work item could not be read and nothing usable was cached" — `TicketReview.SyncFailedPrefix`.
+ *
+ * This one *is* a failure and is reported as such; it is listed here because both prefixes belong to
+ * the same contract and splitting them across two files is how one gets renamed alone.
+ */
+export const TICKET_SYNC_FAILED_PREFIX = "TICKET_SYNC_FAILED: ";
+
+/**
+ * Whether a ticket-review job is the "no ticket linked" refusal.
+ *
+ * Deliberately narrower than `isRefusal`: a sync failure and an empty branch are things that went
+ * wrong, and hiding them behind a calm empty state is how a review silently stops running.
+ */
+export function isTicketRefusal(job: RefusableJob): boolean {
+  if (job.status !== "error" || !job.error) return false;
+  return (
+    job.error.message.startsWith(TICKET_NOT_LINKED_PREFIX) ||
+    job.error.message.startsWith(NOTHING_TO_ANALYZE_PREFIX)
+  );
+}

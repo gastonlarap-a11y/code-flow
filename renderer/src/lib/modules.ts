@@ -56,7 +56,7 @@ export const APP_MODULES = [
   { id: "graph", icon: History, labelKey: "tabbar.graph", scope: "repo" },
   { id: "changes", icon: GitBranch, labelKey: "tabbar.changes", scope: "repo" },
   { id: "editor", icon: Code2, labelKey: "tabbar.editor", scope: "repo" },
-  { id: "workitems", icon: SquareKanban, labelKey: "tabbar.workitems", scope: "repo", comingSoon: true },
+  { id: "workitems", icon: SquareKanban, labelKey: "tabbar.workitems", scope: "repo" },
   { id: "api", icon: Send, labelKey: "tabbar.api", scope: "workspace" },
 ] as const satisfies readonly AppModule[];
 

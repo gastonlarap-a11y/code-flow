@@ -13,6 +13,32 @@ import { applyLoginShellPath } from "./login-path";
 import { grants } from "./permissions";
 import { logsDirectory, record } from "./shell-log";
 
+// Registered first, before anything can throw. Node's default for an uncaught exception in the main
+// process is to print a stack and exit, and in a packaged Electron app there is no console to print
+// to: the window vanishes mid-action, macOS writes no crash report because nothing died by signal,
+// and `shell.log` gets no line because the process is already gone. That is not a hypothetical —
+// it is how "the app closes when I press stop" reached us, with both places one would look empty.
+//
+// Staying alive is the point. An unhandled rejection or a stray `'error'` event from one emitter
+// says nothing about whether the rest of the app still works, and the user is mid-task; the
+// listeners below leave that judgement to them and make sure the reason is on disk either way.
+process.on("uncaughtException", (error) => {
+  record("error", `[shell] uncaught: ${error.stack ?? error.message}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  record("error", `[shell] unhandled rejection: ${detail}`);
+});
+
+// A signal is the one way to end an AppKit app that leaves nothing to find: no crash report, because
+// it is a graceful terminate rather than a fault, and no stack, because `before-quit` comes straight
+// out of `applicationShouldTerminate:`. Recorded so the next one is a line rather than a mystery.
+// The app still ends — refusing to would make it unkillable by ordinary means — but it ends saying so.
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+  process.on(signal, () => requestQuit(`a ${signal} from outside the app`));
+}
+
 // The shell is CommonJS on purpose. Electron's preload script has to be CJS unless the whole
 // chain opts into ESM with the right extensions, and that friction buys nothing here — this is
 // about a thousand lines of glue across five files, not a library.
@@ -41,10 +67,26 @@ let sidecar: ChildProcessByStdio<Writable, Readable, Readable> | null = null;
  * Distinguishes "the user closed the window" from "the app is really quitting".
  *
  * CodeFlow 1.7.2 keeps the process alive when the window closes so AI runs and terminals survive,
- * and uses this flag to tell a real quit apart. Only four things set it: the tray's Quit item,
- * the macOS ⌘Q menu item, and the `quit_app` and `reset_app_data` commands.
+ * and uses this flag to tell a real quit apart. Everything that sets it deliberately goes through
+ * {@link requestQuit}; `before-quit` sets it too, and records a stack when it finds it still down —
+ * that is the case where the quit came from outside this file entirely.
  */
 let quitting = false;
+
+/**
+ * Quits, and writes down who asked.
+ *
+ * Every deliberate exit goes through here rather than setting the flag and calling `app.quit()` on
+ * its own. Without it the log records only that the core exited, which is the *consequence* of a
+ * quit and says nothing about its cause — and "the app closed by itself" is a report that can only
+ * be answered by naming the caller. The four reasons are few enough to enumerate and impossible to
+ * tell apart after the fact.
+ */
+function requestQuit(reason: string): void {
+  record("info", `[shell] quitting: ${reason}`);
+  quitting = true;
+  app.quit();
+}
 
 // ---------------------------------------------------------------------------
 // Renderer delivery
@@ -126,6 +168,9 @@ function createWindow(): BrowserWindow {
     // Close hides to the tray; only an explicit quit ends the process. Cutting this would change
     // the app's process model, not just its window behaviour.
     if (!quitting) {
+      // Recorded because from the outside a hidden window and a quit look identical, and telling
+      // them apart is the whole difficulty in any report of the app "closing on its own".
+      record("info", "[shell] the window was closed; hiding to the tray, the app keeps running");
       event.preventDefault();
       hideToBackground(window);
     }
@@ -271,13 +316,7 @@ function createTray(): void {
     Menu.buildFromTemplate([
       { label: "Show CodeFlow", click: showWindow },
       { type: "separator" },
-      {
-        label: "Quit CodeFlow",
-        click: () => {
-          quitting = true;
-          app.quit();
-        },
-      },
+      { label: "Quit CodeFlow", click: () => requestQuit("the tray's Quit item") },
     ]),
   );
   tray.on("click", showWindow);
@@ -312,10 +351,7 @@ function installMenu(): void {
           {
             label: "Quit CodeFlow",
             accelerator: "Command+Q",
-            click: () => {
-              quitting = true;
-              app.quit();
-            },
+            click: () => requestQuit("the ⌘Q menu item"),
           },
         ],
       },
@@ -373,11 +409,36 @@ function startSidecar(): Promise<string> {
     const child = spawn(
       executable,
       ["--app-version", app.getVersion()],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      {
+        stdio: ["pipe", "pipe", "pipe"],
+        // `detached` is `setsid()`: the core leads its own process group, and so does everything
+        // under it. Without it the whole tree — this process, the core, the AI CLI it spawns and
+        // that CLI's own MCP servers — shares **one** group, and a group-wide signal from anywhere
+        // in it reaches the app. That is not hypothetical: stopping a run kills the CLI's tree, and
+        // one millisecond later AppKit began a graceful terminate here, with no `app.quit()`
+        // anywhere in the stack. A `SIGTERM` does not crash an AppKit app, it asks it to quit — so
+        // the app closed mid-action leaving no crash report and no exception to find. `BOOT-037`.
+        //
+        // Nothing about lifetime changes: `stopSidecar` signals this child by pid and escalates to
+        // SIGKILL, and Node never killed children on its own anyway.
+        detached: true,
+      },
     );
     sidecar = child;
 
     child.stdin.end(`${ipc.token}\n`);
+
+    // The three pipes need the same guard the `spawn` itself got below, and for the same reason: a
+    // stream whose peer went away emits `'error'`, and an `'error'` with no listener is thrown.
+    // `stdin` is the likeliest of the three — it is written once and closed, so a core that dies
+    // early turns that write into an EPIPE — but a killed process can break a read just as well.
+    // Recorded and otherwise ignored: the exit handler below is what decides what a dead core means.
+    for (const [name, stream] of [
+      ["stdin", child.stdin], ["stdout", child.stdout], ["stderr", child.stderr],
+    ] as const) {
+      stream.on("error", (error: Error) =>
+        record("warn", `[shell] the CodeFlow core's ${name} failed: ${error.message}`));
+    }
 
     let settled = false;
     child.stdout.setEncoding("utf8");
@@ -572,10 +633,11 @@ function registerBridge(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
 
-  ipcMain.handle("codeflow:quit", () => {
-    quitting = true;
-    app.quit();
-  });
+  // The renderer's three callers are `quit_app` (Settings), `reset_app_data` and the updater's
+  // relaunch. Which one it was matters enough to be worth the round trip, because they mean very
+  // different things: the last two are quits the user did not ask for in so many words.
+  ipcMain.handle("codeflow:quit", (_event, reason?: string) =>
+    requestQuit(`the renderer asked (${reason ?? "no reason given"})`));
 }
 
 // ---------------------------------------------------------------------------
@@ -646,13 +708,26 @@ if (!app.requestSingleInstanceLock()) {
   app.on("activate", showWindow);
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      quitting = true;
-      app.quit();
-    }
+    if (process.platform !== "darwin") requestQuit("the last window closed on a platform with no tray");
   });
 
+  // A renderer that dies takes the window with it and nothing else — recorded because a blank or
+  // vanished window is otherwise indistinguishable from the app having quit, which is exactly the
+  // confusion this whole trail exists to settle.
+  app.on("render-process-gone", (_event, _contents, details) =>
+    record("error", `[shell] the window's process is gone: ${details.reason} (exit ${details.exitCode})`));
+
+  app.on("child-process-gone", (_event, details) =>
+    record("error", `[shell] a ${details.type} process is gone: ${details.reason}`));
+
   app.on("before-quit", () => {
+    // Reaching here with the flag still down means the quit came from somewhere that is not one of
+    // the four — macOS asking the app to terminate, a signal, or Electron itself. The stack names
+    // it, and it is the one case no amount of reading the source could have narrowed down.
+    if (!quitting) {
+      record("warn", `[shell] quitting: not through any of our own paths\n${new Error("quit").stack ?? ""}`);
+    }
+
     quitting = true;
     stopSidecar();
   });

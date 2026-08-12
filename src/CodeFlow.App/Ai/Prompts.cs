@@ -35,6 +35,24 @@ public static class Prompts
     /// <summary>The PR review methodology. Seeded into every workspace by the storage migration.</summary>
     public static string DefaultPrReviewStandard { get; } = Load("DEFAULT_PR_REVIEW_STANDARD");
 
+    /// <summary>
+    /// The methodology for reviewing a branch against the work item it was written for.
+    /// </summary>
+    /// <remarks>
+    /// Seeded into every workspace beside <see cref="DefaultPrReviewStandard"/>, and it repeats that
+    /// file's whole second half — the lenses, the taxonomy, the ratings, the gate and the finding
+    /// format — <b>byte for byte</b>. Two copies of a contract that two parsers match on is a real
+    /// hazard, so <c>PromptsTests.The_two_review_standards_share_the_finding_format_verbatim</c>
+    /// asserts the identity rather than trusting it: a rewording of one copy fails the build instead
+    /// of silently producing findings the renderer cannot read (<c>XLANG-001</c>).
+    /// <para>
+    /// What it adds is its own: the ticket block, the anti-assumption prohibitions, and the two
+    /// closing sections that <c>TicketVerdict</c> and <c>parseTicketVerdict.ts</c> read
+    /// (<c>XLANG-016</c>).
+    /// </para>
+    /// </remarks>
+    public static string DefaultTicketReviewStandard { get; } = Load("DEFAULT_TICKET_REVIEW_STANDARD");
+
     /// <summary>The PR-description generator template.</summary>
     public static string DefaultPrDescriptionTemplate { get; } = Load("DEFAULT_PR_DESCRIPTION_TEMPLATE");
 

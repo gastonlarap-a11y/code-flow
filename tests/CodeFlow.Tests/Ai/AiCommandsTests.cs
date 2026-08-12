@@ -19,7 +19,9 @@ public sealed class AiCommandsTests
         "default_commit_template", "default_review_template", "default_analyze_template",
         "default_pr_description_template", "default_resolve_conflict_template",
         "generate_commit_message", "resolve_conflict_with_ai", "inline_edit_with_ai",
-        "resolve_finding_with_ai", "analyze_working_changes", "send_chat_message",
+        // `analyze_working_changes` is gone: it is one half of `review_changes`
+        // (`Tickets/TicketCommands.cs`), which carries the scope and the ticket axes together.
+        "resolve_finding_with_ai", "send_chat_message",
     ];
 
     [Fact]

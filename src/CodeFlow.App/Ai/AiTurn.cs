@@ -195,17 +195,27 @@ internal static class AiTurn
     }
 
     /// <summary>
-    /// Scans whatever is sitting in the working directory for bugs before the user commits it.
+    /// Scans local changes for bugs, without a work item in the question.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The job id doubles as the run id: the job row the UI already renders is exactly the thing that
     /// should show this run's live output and its stop button.
+    /// </para>
+    /// <para>
+    /// <paramref name="scope"/> is the only thing that made this more general than its old name
+    /// suggested — <see cref="ReviewScope.Branch"/> is the combination the panel could not offer
+    /// before, and it is the useful one in a repository that keeps no tickets. Everything else here
+    /// is unchanged, <c>AI-024</c>'s refusal handling included.
+    /// </para>
     /// </remarks>
-    public static async Task<string> AnalyzeWorkingChangesAsync(
+    public static async Task<string> AnalyzeChangesAsync(
         Database database,
         AiRunner runner,
         string projectId,
         string jobId,
+        ReviewScope scope,
+        string baseRef,
         AgentOverride agent,
         CancellationToken cancellationToken)
     {
@@ -220,14 +230,19 @@ internal static class AiTurn
         // Off the pump thread: LibGit2Sharp is synchronous, and a full-context diff of a large
         // working tree is not a bounded amount of work.
         var diff = await Task
-            .Run(() => Diff.RenderForPrompt(Diff.Working(setup.Project.LocalPath)), cancellationToken)
+            .Run(
+                () => Diff.RenderForPrompt(scope is ReviewScope.Branch
+                    ? Diff.BranchContribution(setup.Project.LocalPath, baseRef)
+                    : Diff.Working(setup.Project.LocalPath)),
+                cancellationToken)
             .ConfigureAwait(false);
 
         try
         {
             var text = await AiOperations.AnalyzeChangesAsync(
-                runner, setup.Config, setup.Contexts, diff, setup.Project.LocalPath, template, mcpConfigPath,
-                new AiRunContext(jobId), DateTimeOffset.Now, cancellationToken).ConfigureAwait(false);
+                runner, setup.Config, setup.Contexts, diff, scope, setup.Project.LocalPath, template,
+                mcpConfigPath, new AiRunContext(jobId), DateTimeOffset.Now, cancellationToken)
+                .ConfigureAwait(false);
 
             await database.WriteAsync(
                 connection => JobHistoryStore.Add(

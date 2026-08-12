@@ -33,6 +33,30 @@ internal sealed partial class MacKeychain : ICredentialBackend
 
     private const int ErrSecSuccess = 0;
 
+    /// <summary>
+    /// The three ways macOS says "the item is there and you may not have it".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Distinguished from every other failure because they are the only ones the user can do
+    /// anything about, and because they are <em>expected</em> rather than exceptional: a keychain
+    /// item's ACL is bound to the binary that created it, and CodeFlow ships ad-hoc signed with
+    /// <c>electronFuses.resetAdHocDarwinSignature</c> rewriting that signature on every build. An
+    /// update can therefore leave the app locked out of the tokens its own previous build saved.
+    /// </para>
+    /// <para>
+    /// <c>errSecUserCanceled</c> is in the list on purpose: the prompt the user dismissed is the
+    /// same authorisation, and treating a dismissal as a hard failure would report an
+    /// <c>OSStatus</c> for something they did deliberately.
+    /// </para>
+    /// </remarks>
+    private static readonly int[] RefusedStatuses =
+    [
+        -25293, // errSecAuthFailed
+        -25308, // errSecInteractionNotAllowed
+        -128,   // errSecUserCanceled
+    ];
+
     public string? Get(string service, string account)
     {
         using var query = new CFDictionaryBuilder()
@@ -125,6 +149,17 @@ internal sealed partial class MacKeychain : ICredentialBackend
         if (status == ErrSecSuccess)
         {
             return;
+        }
+
+        // A refusal is a state with a way out, so it gets the sentence that names the way out and
+        // the prefix the renderer already turns into a "reconnect" banner. Everything else keeps
+        // the diagnostic text: it is a fault, and the OSStatus is the only clue there is.
+        if (Array.IndexOf(RefusedStatuses, status) >= 0)
+        {
+            throw new CredentialStoreException(
+                $"{CredentialStoreException.RefusedPrefix}macOS did not allow CodeFlow to read its "
+                + $"saved credentials. This usually happens after an app update. Reconnect the "
+                + $"account in Settings to store the credential again. (OSStatus {status})");
         }
 
         throw new CredentialStoreException(

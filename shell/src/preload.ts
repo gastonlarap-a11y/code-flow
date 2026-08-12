@@ -114,7 +114,15 @@ const api = {
    */
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 
-  quit: (): Promise<void> => ipcRenderer.invoke("codeflow:quit"),
+  /**
+   * Ends the app, naming the caller for the log.
+   *
+   * The reason is validated here rather than trusted: this is the security boundary, and what it
+   * carries goes straight into a file. A non-string is dropped instead of stringified, so nothing
+   * the renderer can construct decides the shape of a log line.
+   */
+  quit: (reason?: unknown): Promise<void> =>
+    ipcRenderer.invoke("codeflow:quit", typeof reason === "string" ? reason.slice(0, 120) : undefined),
 } as const;
 
 contextBridge.exposeInMainWorld("codeflow", api);

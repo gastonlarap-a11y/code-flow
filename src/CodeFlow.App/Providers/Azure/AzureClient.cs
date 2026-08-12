@@ -88,7 +88,11 @@ public sealed class AzureException(string message, bool unauthorized = false) : 
 public static class AzureClient
 {
     /// <summary>The REST contract every call pins itself to.</summary>
-    private const string ApiVersion = "7.1";
+    /// <remarks>
+    /// <c>internal</c> rather than private so <see cref="AzureWorkItemClient"/> pins the same contract
+    /// instead of declaring a second <c>"7.1"</c> that could drift from this one.
+    /// </remarks>
+    internal const string ApiVersion = "7.1";
 
     /// <summary>
     /// The contract <c>connectionData</c> alone requires.
@@ -759,7 +763,13 @@ public static class AzureClient
     // ---------- path segments ----------
 
     /// <summary>The organisation, normalised then encoded — the form every URL here needs.</summary>
-    private static string OrgSegment(string org) => Encode(NormalizeOrg(org));
+    /// <remarks>
+    /// <c>internal</c> so the work-item client builds its URLs the same way. Normalisation is not
+    /// cosmetic: <see cref="NormalizeOrg"/> reduces a saved <c>https://dev.azure.com/acme</c> or
+    /// <c>acme.visualstudio.com</c> to <c>acme</c>, and Azure's server rejects a literal <c>:</c>
+    /// anywhere in a request path.
+    /// </remarks>
+    internal static string OrgSegment(string org) => Encode(NormalizeOrg(org));
 
     /// <summary>
     /// Reduces whatever the user saved as their "organisation" to the bare name.
@@ -887,6 +897,38 @@ public static class AzureClient
         }
     }
 
+    /// <summary>
+    /// Any URL on this host, read as raw bytes, with this file's auth and transport handling.
+    /// </summary>
+    /// <remarks>
+    /// One <c>internal</c> member instead of promoting <c>Request</c>, <c>SendAsync</c> and
+    /// <c>EnsureSuccessAsync</c> separately: <see cref="AzureWorkItemClient"/> needs exactly this —
+    /// a work-item attachment is bytes behind the same Basic auth — and everything else about how
+    /// the request is built stays private to this file.
+    /// <para>
+    /// The failure text follows <c>GetBlobAsync</c>'s shape and drops the response body: an
+    /// attachment that fails to download answers with the file's own bytes or an error page, and
+    /// interpolating either into a message helps nobody.
+    /// </para>
+    /// </remarks>
+    internal static async Task<byte[]> GetBytesAsync(
+        HttpClient http, string url, string pat, CancellationToken cancellationToken)
+    {
+        using var request = Request(HttpMethod.Get, url, pat);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+
+        using var response = await SendAsync(http, request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new AzureException(
+                $"Azure DevOps returned {StatusText.Of(response.StatusCode)} reading a file",
+                response.StatusCode
+                    is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden);
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static HttpRequestMessage Request(HttpMethod method, string url, string pat)
     {
         var request = new HttpRequestMessage(method, url);
@@ -896,7 +938,16 @@ public static class AzureClient
         return request;
     }
 
-    private static async Task<T> GetAsync<T>(
+    /// <summary>
+    /// A GET returning a deserialised resource, with this file's error mapping.
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> so <see cref="AzureWorkItemClient"/> reaches Azure through the same transport.
+    /// Sharing it is the point: <c>DIVERGENCE-PROV-b</c>'s 401/403 marking lives in
+    /// <see cref="EnsureSuccessAsync"/>, and a second client with its own <c>SendAsync</c> would map
+    /// a refused credential to a generic failure without anything failing to compile.
+    /// </remarks>
+    internal static async Task<T> GetAsync<T>(
         HttpClient http, string url, string pat, JsonTypeInfo<T> type, CancellationToken cancellationToken)
     {
         using var request = Request(HttpMethod.Get, url, pat);
@@ -918,7 +969,9 @@ public static class AzureClient
     }
 
     /// <summary>Sends a request with a JSON body and deserialises the resource it returned.</summary>
-    private static async Task<TResult> SendJsonAsync<TBody, TResult>(
+    /// <remarks><c>internal</c> for the same reason as <see cref="GetAsync{T}"/>: WIQL and the
+    /// work-item batch read are POSTs, and they must share this error mapping.</remarks>
+    internal static async Task<TResult> SendJsonAsync<TBody, TResult>(
         HttpClient http, HttpMethod method, string url, string pat,
         TBody body, JsonTypeInfo<TBody> bodyType, JsonTypeInfo<TResult> resultType,
         CancellationToken cancellationToken)
@@ -984,7 +1037,36 @@ public static class AzureClient
             is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden;
 
         throw new AzureException(
-            $"Azure DevOps returned {StatusText.Of(response.StatusCode)}: {body}", unauthorized);
+            $"Azure DevOps returned {StatusText.Of(response.StatusCode)}: {Readable(body)}", unauthorized);
+    }
+
+    /// <summary>
+    /// The response body, or a sentence when the body is a web page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>DIVERGENCE-PROV-c</c>.</b> Azure answers an unknown organisation, and an unauthenticated
+    /// request, with its sign-in <em>page</em> — a full HTML document. Interpolating it whole, which
+    /// is what 1.7.2 did and what this client did until now, makes the error message tens of
+    /// kilobytes of markup and a base64 logo. Observed for real: a 404 for a mistyped organisation
+    /// rendered as an entire HTML document where an error toast should be.
+    /// </para>
+    /// <para>
+    /// The status code stays exactly as it was, so nothing that parses the prefix changes. Only the
+    /// body is replaced, and only when it is unmistakably a page rather than an API error — a JSON
+    /// error from the API is what actually explains a failure and is never touched.
+    /// </para>
+    /// </remarks>
+    private static string Readable(string body)
+    {
+        var start = body.AsSpan().TrimStart();
+        var isPage = start.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
+            || start.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
+
+        return isPage
+            ? "the server answered with a sign-in page instead of the API. Check that the "
+              + "organisation name is right and that its token has not expired."
+            : body;
     }
 
     /// <summary>The body as text, or empty when it cannot be read — never a failure of its own.</summary>

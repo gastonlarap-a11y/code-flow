@@ -13,7 +13,8 @@ namespace CodeFlow.Workspaces;
 /// </remarks>
 internal static class WorkspaceStore
 {
-    private const string Columns = "id, name, icon, color, sort_order, created_at, git_name, git_email";
+    private const string Columns =
+        "id, name, icon, color, sort_order, created_at, git_name, git_email, ado_org, ado_project";
 
     /// <summary>
     /// Creates a workspace and seeds its two editable prompt overrides.
@@ -28,7 +29,7 @@ internal static class WorkspaceStore
     {
         var workspace = new Workspace(
             Guid.NewGuid().ToString(), name, icon, color, SortOrder: 0, Clock.Now(),
-            GitName: null, GitEmail: null);
+            GitName: null, GitEmail: null, AdoOrg: null, AdoProject: null);
 
         Sql.Execute(connection,
             """
@@ -141,5 +142,28 @@ internal static class WorkspaceStore
         reader.GetInt64(4),
         reader.GetString(5),
         reader.TextOrNull(6),
-        reader.TextOrNull(7));
+        reader.TextOrNull(7),
+        reader.TextOrNull(8),
+        reader.TextOrNull(9));
+
+    /// <summary>
+    /// Sets or clears which Azure DevOps organisation and board project this workspace's tickets
+    /// come from.
+    /// </summary>
+    /// <remarks>
+    /// Null clears either, and clearing is a real choice: the resolution then falls through to the
+    /// linked project's own organisation and project rather than to nothing. Written as a pair
+    /// because they are only meaningful together — a project name without the organisation it lives
+    /// in addresses nothing.
+    /// </remarks>
+    public static void UpdateTicketAccount(
+        SqliteConnection connection, string id, string? org, string? project) =>
+        Sql.Execute(connection,
+            "UPDATE workspaces SET ado_org = $org, ado_project = $project WHERE id = $id",
+            ("$id", id),
+            ("$org", NullIfBlank(org)),
+            ("$project", NullIfBlank(project)));
+
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -17,6 +17,7 @@ export const AI_TASKS: AiTaskDef[] = [
   { key: "commit", labelKey: "task.commit", hintKey: "task.commitHint" },
   { key: "analyze", labelKey: "task.analyze", hintKey: "task.analyzeHint" },
   { key: "review", labelKey: "task.review", hintKey: "task.reviewHint" },
+  { key: "ticket_review", labelKey: "task.ticketReview", hintKey: "task.ticketReviewHint" },
   { key: "pr_description", labelKey: "task.prDescription", hintKey: "task.prDescriptionHint" },
   { key: "fix", labelKey: "task.fix", hintKey: "task.fixHint", agenticOnly: true },
   { key: "conflict", labelKey: "task.conflict", hintKey: "task.conflictHint" },

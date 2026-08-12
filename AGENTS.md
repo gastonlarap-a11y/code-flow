@@ -7,7 +7,7 @@ No root `package.json` — a .NET solution with two independent pnpm packages in
 - `src/CodeFlow.App/` — the sidecar, one executable, **one folder per feature** (`Git/`, `Ai/`,
   `Providers/`, `Review/`, `ApiClient/`, `Files/`, `Storage/`, `Security/`, `Ipc/`, …)
 - `tests/CodeFlow.Tests/` — xUnit v3; a feature's tests live under the same folder name as the
-  feature (`Git/` → `Git/`). `Platform/` has no test folder today.
+  feature (`Git/` → `Git/`).
 - `shell/` — Electron main + preload (TypeScript, CommonJS, `tsc` only, no bundler)
 - `renderer/` — React 19 + Vite + Tailwind 4 + zustand
 - `docs/business-rules/` — the specification the code must satisfy; `docs/BUSINESS_RULES.md` indexes

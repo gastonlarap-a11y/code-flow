@@ -96,13 +96,15 @@ internal static class ReviewPosting
                 index is null ? null : ReviewMemory.FindingIdentity(item.File, item.Category)));
         }
 
-        // Summary first, and the refusal before it.
+        // The summary goes above the findings it summarises, and the refusal goes before both.
         //
-        // A review's summary is the thing anyone opens the pull request to read, and posting it last
-        // put it under the findings it summarises — a postscript to its own conclusions. Posting it
-        // first only works if the batch is known to be publishable: a summary announcing findings
-        // that a stale-head refusal then blocks would describe comments nobody can see. So the
-        // freshness check moves ahead of both.
+        // <b>Which end of the batch that means depends on the host</b>, and only on the host: the
+        // goal is always "the summary is the first thing read". GitHub's conversation runs oldest
+        // first, so posting the summary first puts it on top; Azure's overview runs newest first, so
+        // there the same code buries it — which is what a user reported seeing. `DIVERGENCE-PROV-d`.
+        //
+        // Either way the freshness check moves ahead of both: a summary announcing findings that a
+        // stale-head refusal then blocks would describe comments nobody can see.
         //
         // `PublishFindingsAsync` checks again, and that second check is **not** a re-validation: the
         // host reads the head SHA once per pull request and reuses it, so both checks see the same
@@ -115,10 +117,20 @@ internal static class ReviewPosting
             prId, analysedHead, prepared.Any(item => item.Location is not null), cancellationToken)
             .ConfigureAwait(false);
 
-        await SummaryAsync(host, prId, postSummary, summary, failures, cancellationToken).ConfigureAwait(false);
+        if (!host.DiscussionNewestFirst)
+        {
+            await SummaryAsync(host, prId, postSummary, summary, failures, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         var outcomes = await host.PublishFindingsAsync(prId, prepared, analysedHead, cancellationToken)
             .ConfigureAwait(false);
+
+        if (host.DiscussionNewestFirst)
+        {
+            await SummaryAsync(host, prId, postSummary, summary, failures, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         for (var i = 0; i < outcomes.Count; i++)
         {
@@ -158,10 +170,14 @@ internal static class ReviewPosting
         var today = Today();
         var failures = new List<string>();
 
-        // Summary first here too, for the reason given in `PublishAsync`. No freshness check to run
-        // ahead of it: a link review has no saved run, so there is no analysed head to compare
-        // against and BUG-REVIEW-a's refusal cannot fire.
-        await SummaryAsync(host, number, postSummary, summary, failures, cancellationToken).ConfigureAwait(false);
+        // The summary goes on top here too, at whichever end of the batch that means for this host —
+        // see `PublishAsync`. No freshness check to run ahead of it: a link review has no saved run,
+        // so there is no analysed head to compare against and BUG-REVIEW-a's refusal cannot fire.
+        if (!host.DiscussionNewestFirst)
+        {
+            await SummaryAsync(host, number, postSummary, summary, failures, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         // No thread and nothing resolved on any of them, which is what reduces the same interface
         // member to "open one comment per finding".
@@ -173,6 +189,12 @@ internal static class ReviewPosting
             // this session, not from one stored days ago.
             analysedHeadSha: null,
             cancellationToken).ConfigureAwait(false);
+
+        if (host.DiscussionNewestFirst)
+        {
+            await SummaryAsync(host, number, postSummary, summary, failures, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         for (var i = 0; i < outcomes.Count; i++)
         {

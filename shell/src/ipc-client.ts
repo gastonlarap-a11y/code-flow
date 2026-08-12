@@ -198,13 +198,11 @@ export class IpcClient {
       const attempt = () => {
         const socket = connect(endpoint);
 
-        socket.once("connect", () => {
-          writeFrame(socket, { channel, token: this.token });
-          this.attach(socket, channel);
-          resolve(socket);
-        });
-
-        socket.once("error", (error) => {
+        // Named and removed on connect rather than left as a `once`. A `once` that survives the
+        // handshake answers the *first* failure of the live connection as if it were a failed
+        // connection attempt — reconnecting a socket whose promise has already resolved, which
+        // nothing then reads — and leaves the socket with no error listener at all afterwards.
+        const retry = (error: Error) => {
           socket.destroy();
           // The sidecar binds its endpoint a moment after spawn; retrying beats a fixed sleep,
           // which would either be too short on a cold start or waste time on a warm one.
@@ -213,14 +211,30 @@ export class IpcClient {
           } else {
             reject(new Error(`could not connect the ${channel} channel: ${error.message}`));
           }
+        };
+
+        socket.once("connect", () => {
+          socket.off("error", retry);
+          writeFrame(socket, { channel, token: this.token });
+          this.attach(socket, channel);
+          resolve(socket);
         });
+
+        socket.once("error", retry);
       };
 
       attempt();
     });
   }
 
-  private attach(socket: Socket, channel: ChannelKind): void {
+  /**
+   * Wires one connected socket up to the reader.
+   *
+   * Not `private`: the test constructs a socket and calls this directly, because what has to be
+   * proven is the presence of a listener rather than any behaviour reachable through the public
+   * surface.
+   */
+  attach(socket: Socket, channel: ChannelKind): void {
     const reader = new FrameReader((frame) => this.dispatch(frame, channel));
 
     socket.on("data", (chunk) => {
@@ -229,6 +243,15 @@ export class IpcClient {
       } catch (error) {
         this.markDown(error instanceof Error ? error.message : String(error));
       }
+    });
+
+    // Handling this is not optional. Node throws an `'error'` event that has no listener, and an
+    // exception thrown in the Electron main process ends the app then and there — no window, no
+    // dialog, and no crash report either, because nothing died by signal. That failure mode is
+    // indistinguishable from "the app closed by itself", which is precisely how it was reported.
+    // `main.ts` already states the rule for the sidecar's own `spawn`; it holds for every emitter.
+    socket.on("error", (error) => {
+      if (this.status === "ready") this.markDown(`the ${channel} channel failed: ${error.message}`);
     });
 
     socket.on("close", () => {

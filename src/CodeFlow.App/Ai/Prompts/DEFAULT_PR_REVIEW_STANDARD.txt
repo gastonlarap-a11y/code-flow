@@ -65,4 +65,4 @@ Format rules:
 - The `CODE AROUND THE CHANGES` blocks carry each file's real line numbers, so read the surrounding code there rather than counting lines in the diff. Quote a line from the diff when you anchor a finding.
 - Be specific and cite real files and lines from the diff — do not generalise and do not restate the diff.
 - Order the findings by severity (Blocker→Info) and, within each severity, by descending confidence.
-- If you find NO real problem, say so in a couple of lines with ✅ right after the CALIDAD line, without inventing findings and without using the block above.
+- If you find NO real problem, say so right after the CALIDAD line with ✅, without inventing findings and without using the block above. **State what you reviewed**: how many files, the main ones by name, and which kinds of problem you looked for and did not find. A bare ✅ is not an answer — it is indistinguishable from a run that failed silently, and it leaves the reader nothing to judge the review by. Two or three lines, and still no summary of changes that are not problematic.

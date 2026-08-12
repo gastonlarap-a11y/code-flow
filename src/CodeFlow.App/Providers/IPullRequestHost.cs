@@ -128,6 +128,19 @@ internal interface IPullRequestHost
     /// </remarks>
     Task PostSummaryAsync(long prId, string content, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Whether this host's discussion shows the newest comment at the top.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fact about the host's own screen, which decides when the summary is posted.</b> The
+    /// summary is what somebody opens a pull request to read, so it has to end up above the findings
+    /// it summarises — and on a feed ordered oldest-first that means posting it first, while on one
+    /// ordered newest-first it means posting it last. Getting it backwards is not a crash: the
+    /// summary simply sinks under its own conclusions, which is what a user reported seeing on
+    /// Azure. See <c>DIVERGENCE-PROV-d</c>.
+    /// </remarks>
+    bool DiscussionNewestFirst { get; }
+
     /// <summary>The pull request's open comment threads.</summary>
     Task<IReadOnlyList<PrCommentThread>> ListCommentThreadsAsync(long prId, CancellationToken cancellationToken);
 

@@ -64,7 +64,8 @@ export function ActivityModal({ projectId, onClose }: { projectId: string; onClo
       const pr = prsByProject[projectId]?.find((p) => p.id === entry.job.meta.prId);
       if (!pr) return;
       selectPr(pr);
-    } else if (entry.job.kind === "analyze-changes") {
+      // Both kinds are reviews of local changes and both render in the same tab.
+    } else if (entry.job.kind === "analyze-changes" || entry.job.kind === "ticket-review") {
       useAiPanelStore.getState().showAnalyzeJob(entry.job.id);
     }
     onClose();

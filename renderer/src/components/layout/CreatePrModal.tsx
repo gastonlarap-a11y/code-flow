@@ -7,9 +7,8 @@ import { usePrStore } from "../../state/prStore";
 import { pushErrorToast } from "../../state/toastStore";
 import { useT } from "../../state/languageStore";
 import { Select } from "../common/Select";
+import { currentBranch, preferredBaseBranch } from "../../lib/branches";
 import type { BranchInfo, Project } from "../../types/domain";
-
-const PREFERRED_TARGETS = ["main", "master", "develop", "development"];
 
 interface CreatePrModalProps {
   project: Project;
@@ -47,15 +46,9 @@ export function CreatePrModal({ project, onClose, onCreated }: CreatePrModalProp
       .then((list) => {
         if (cancelled) return;
         setBranches(list);
-        const local = list.filter((b) => !b.is_remote);
-        const head = local.find((b) => b.is_head);
-        const src = head?.name ?? local[0]?.name ?? "";
-        const tgt =
-          local.find((b) => PREFERRED_TARGETS.includes(b.name) && b.name !== src)?.name ??
-          local.find((b) => b.name !== src)?.name ??
-          "";
+        const src = currentBranch(list);
         setSource(src);
-        setTarget(tgt);
+        setTarget(preferredBaseBranch(list, src));
       })
       .catch((e) => {
         if (!cancelled) {

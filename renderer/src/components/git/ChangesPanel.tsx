@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -16,6 +16,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Ticket as TicketIcon,
   Trash2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -35,8 +36,11 @@ import { buildFileTree, type FileTreeNode } from "../../lib/buildFileTree";
 import { useT } from "../../state/languageStore";
 import { ConflictsBanner } from "./ConflictsBanner";
 import { SecretScanModal } from "./SecretScanModal";
+import { Modal } from "../common/Modal";
 import { useUiStore } from "../../state/uiStore";
 import { useAiPanelStore } from "../../state/aiPanelStore";
+import { useTicketStore } from "../../state/ticketStore";
+import { useWorkspaceStore } from "../../state/workspaceStore";
 import { IconButton } from "../common/IconButton";
 import { Button } from "../common/Button";
 import { Tooltip } from "../common/Tooltip";
@@ -265,6 +269,20 @@ export function ChangesPanel() {
   const [scanning, setScanning] = useState(false);
   const [secretHits, setSecretHits] = useState<SecretHit[] | null>(null);
   const secretScanEnabled = usePreferencesStore((s) => s.secretScanEnabled);
+
+  // The ticket gate. `linked` is loaded here rather than read from wherever the work-items module
+  // left it: this panel is reachable without ever opening that module.
+  const project = useWorkspaceStore((s) => s.activeProject());
+  const branch = status?.current_branch ?? "";
+  const linkedTicket = useTicketStore((s) => s.linked);
+  const [ticketGateOpen, setTicketGateOpen] = useState(false);
+  const ticketOfferedFor = useRef<string | null>(null);
+  const projectId = project?.id ?? null;
+
+  useEffect(() => {
+    if (projectId && branch) void useTicketStore.getState().loadBranchReview(projectId, branch);
+  }, [projectId, branch]);
+
   const [pending, setPending] = useState<{ path: string; kind: "stage" | "unstage" | "discard" | "all" } | null>(
     null,
   );
@@ -395,6 +413,17 @@ export function ChangesPanel() {
         setScanning(false);
       }
     }
+
+    // The second gate, and a softer one than the first: a branch with a ticket gets one offer to
+    // review the work against its acceptance criteria before it is committed. Offered once per
+    // branch — the point is to be there at the moment it is still cheap to act on, not to stand
+    // between the user and every commit. Whichever way they answer, the commit is theirs.
+    if (linkedTicket && branch && ticketOfferedFor.current !== branch) {
+      ticketOfferedFor.current = branch;
+      setTicketGateOpen(true);
+      return;
+    }
+
     await performCommit();
   };
 
@@ -477,7 +506,10 @@ export function ChangesPanel() {
                     label="analyze.button"
                     icon={ShieldCheck}
                     onClick={() => {
-                      useAiPanelStore.getState().showAnalyze();
+                      // This button sits above the uncommitted files and means them: it says which
+                      // combination it wants rather than inheriting whatever the panel was last
+                      // left on.
+                      useAiPanelStore.getState().showAnalyze({ scope: "working", withTicket: false });
                       openAiPanel();
                     }}
                   />
@@ -608,6 +640,49 @@ export function ChangesPanel() {
             await performCommit();
           }}
         />
+      )}
+      {ticketGateOpen && linkedTicket && (
+        <Modal
+          title="ticketReview.gateTitle"
+          icon={TicketIcon}
+          size="sm"
+          onClose={() => setTicketGateOpen(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              {/* Committing is never the dangerous choice here — a review that says nothing is
+                  wrong is the common case, and the gate exists to offer, not to withhold. */}
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  setTicketGateOpen(false);
+                  await performCommit();
+                }}
+              >
+                {t("ticketReview.gateSkip")}
+              </Button>
+              <Button
+                variant="primary"
+                autoFocus
+                onClick={() => {
+                  setTicketGateOpen(false);
+                  openAiPanel();
+                  // The gate offered to review against the ticket, so the panel arrives with the
+                  // ticket on and the whole branch in scope — judging only the uncommitted half
+                  // against acceptance criteria reports met criteria as unmet.
+                  useAiPanelStore.getState().showAnalyze({ scope: "branch", withTicket: true });
+                }}
+              >
+                {t("ticketReview.gateRun")}
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-body">
+            <span className="text-[var(--cf-text-muted)]">{linkedTicket.external_id}</span> ·{" "}
+            {linkedTicket.title}
+          </p>
+          <p className="mt-2 text-ui text-[var(--cf-text-muted)]">{t("ticketReview.gateBody")}</p>
+        </Modal>
       )}
     </div>
   );

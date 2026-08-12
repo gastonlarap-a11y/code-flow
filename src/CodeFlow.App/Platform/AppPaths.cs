@@ -46,6 +46,22 @@ public static class AppPaths
     public static string ResetMarkerFile => Path.Combine(BaseDirectory, ".reset-pending");
 
     /// <summary>
+    /// Where a ticket's mirrored files go when the user has not chosen somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// A <em>default</em> rather than the answer: this is the one directory in the app the user can
+    /// redirect (setting <c>tickets_root_dir</c>), because unlike the database or the log directory
+    /// it holds documents someone may want beside their own notes. <c>Tickets/TicketPaths.cs</c>
+    /// owns that resolution; this property is what it falls back to.
+    /// <para>
+    /// Under <see cref="BaseDirectory"/> and not the OS "Documents" folder on purpose: Documents is
+    /// routinely synchronised by iCloud or OneDrive, which evicts file contents to the cloud and
+    /// leaves a local read failing for a reason nothing here could explain.
+    /// </para>
+    /// </remarks>
+    public static string TicketsRoot => Path.Combine(BaseDirectory, "tickets");
+
+    /// <summary>
     /// Working directories for reviews of pull requests reached by link alone, one per link.
     /// </summary>
     /// <remarks>

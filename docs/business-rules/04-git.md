@@ -470,6 +470,25 @@ commit renders as 68 269 characters here, an 86 % reduction that now fits the bu
 **Frontend dependency**: `07-review-pipeline.md` (PR diff/review flows in `src/CodeFlow.App/Review/ReviewCommands.cs`).
 **Markers**: none
 
+### GIT-039 A branch's whole contribution is one comparison, not two diffs added together
+**Implementation**: `Diff.BranchContribution` (`src/CodeFlow.App/Git/Diff.cs`)
+**Behaviour**: the merge base of `baseRef` and `HEAD`, compared against
+`DiffTargets.WorkingDirectory | DiffTargets.Index` — everything the branch has changed relative to
+where it left the base, committed and pending alike, in a single `Compare<Patch>` call. `HEAD` rather
+than a named branch: the point of this diff is the working tree, and a detached or just-branched
+`HEAD` still has one.
+**Inputs / outputs**: `repoPath, baseRef` → `IReadOnlyList<FileDiffInfo>`. Throws when the repository
+has no commits, and when no merge base exists between the two.
+**Edge cases**: the obvious implementation — `BranchDiff` concatenated with `Working` — is wrong: a
+file touched in a commit of the branch *and* again uncommitted would appear twice, and a model
+handed the same file twice reports the same finding twice. `GIT-030`'s `BranchDiff` is untouched by
+this and keeps its specified behaviour; this is a second method, not a change to that one.
+`DiffTargets.WorkingDirectory` implies `DiffModifiers.IncludeUntracked` in LibGit2Sharp 0.32.0
+(verified in its source), so a new file the branch adds and has not staged is included.
+**Frontend dependency**: `review_changes` with `scope: "branch"` (`14-work-items.md`, `WI-014`,
+`WI-023`) — the only caller, on either side of its ticket axis.
+**Markers**: none
+
 ### GIT-031 Two IPC surfaces never emit any equivalent of `CHECKOUT_CONFLICT_PREFIX`
 **Implementation**: sweep across `src/CodeFlow.App/Git/`, `src/CodeFlow.App/Git/Remotes.cs`
 **Behaviour**: confirmed by reading every function in scope: no file in this domain other than `src/CodeFlow.App/Git/Branches.cs` defines a `const ... PREFIX` used to tag an error string for frontend parsing (`src/CodeFlow.App/Git/Checkpoints.cs` has `REF_PREFIX`, but that is a ref-namespace constant, never placed into an error string). `merge_branch`'s conflict outcome is a structured `MergeOutcome.status == "conflicts"` field, not a string-prefixed error — conflicts are a **success** return, not an `Err`. Stash apply/pop conflicts and `commit`/`reset_to_commit` errors are all bare, unprefixed libgit2 or the standard library messages.

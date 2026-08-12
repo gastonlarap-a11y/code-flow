@@ -310,6 +310,17 @@ on every Azure error left `CREDENTIAL_REFUSED: ` sitting inside the review-posti
 which is a sentence a person reads. In-process callers branch on `AzureException.Unauthorized`
 instead; `resolve_pr_link` uses that to answer `PrLinkResolution.Expired` and never touches the
 string. Three existing tests caught the leak, and pass unchanged now.
+**A second producer, same literal, same UI path**: `CredentialStoreException.RefusedPrefix`
+(`src/CodeFlow.App/Security/CredentialStore.cs`). macOS binds a keychain item's ACL to the binary
+that created it, and CodeFlow ships ad-hoc signed with `electronFuses.resetAdHocDarwinSignature`
+rewriting that signature on every build — so an update can leave the app unable to read the tokens
+its own previous build stored. `MacKeychain.Check` maps `errSecAuthFailed (-25293)`,
+`errSecInteractionNotAllowed (-25308)` and `errSecUserCanceled (-128)` to this prefix plus a
+sentence naming the way out. Reusing the literal rather than inventing a second sentinel is
+deliberate: to the person reading the screen, a keychain refusal and a host's 401 are the same
+situation — a saved credential that is not working — and `prStore` already turns this into the
+"reconnect this account" state. The two constants are byte-identical and
+`CredentialStoreTests.A_refused_read_is_reported_as_something_the_user_can_act_on` pins it.
 **Frontend dependency**: `src/components/layout/sidebar/PullRequestsSection.tsx` (the PR-list error block).
 **Markers**: `DIVERGENCE-PROV-b`, `VERBATIM`. **New in the port** — 1.7.2 has no such prefix
 and no status-code branch at all (`src/CodeFlow.App/Providers/Azure/AzureClient.cs` repeats `if !status.is_success()` at six call sites). Added
@@ -426,6 +437,77 @@ made. History is for things that happened.
 **Markers**: `VERBATIM` (the prefix). Electron's own
 `Error invoking remote method 'codeflow:invoke'` wrapper used to reach the screen along with it;
 that is stripped at the bridge (`renderer/src/lib/bridge/host.ts`) and is not part of this contract.
+
+---
+
+### XLANG-016 The acceptance-criteria verdict block
+**Implementation**: `src/CodeFlow.App/Ai/Prompts/DEFAULT_TICKET_REVIEW_STANDARD.txt` · `src/CodeFlow.App/Tickets/TicketVerdict.cs` · `renderer/src/lib/parseTicketVerdict.ts`
+**Behaviour**: a ticket review closes with two sections whose headers and field labels are payload,
+not prose. Two parsers match on them, one per language, and the prompt is what makes the model emit
+them.
+
+```
+## VERIFICACIÓN DE CRITERIOS DE ACEPTACIÓN
+
+### AC-{n}: {texto del criterio}
+Veredicto: cumple | no cumple | parcial | no verificable
+Evidencia: {ruta}:{líneas} — {por qué} | sin evidencia en el diff
+🎯 Confianza: {0-100}/100
+
+## VEREDICTO DE COBERTURA
+
+Cobertura: completa | incompleta | no verificable
+Faltante: …
+Fuera de alcance: …
+Resumen: …
+```
+
+**Inputs / outputs**: `TicketVerdict.Parse` returns the criteria table and the coverage block, or
+`null`; `parseTicketVerdict` does the same in the renderer. Both are **tolerant**: a missing or
+malformed section loses the verdict, never the answer, and the review renders as an ordinary
+analysis.
+
+**It cannot collide with `XLANG-001`, twice over.** `ReviewMemory.ParseFindings` and
+`parseAnalysis.ts` only recognise a `###` header carrying one of three emoji, a bracketed severity
+and an `F-NNN` id — `### AC-1:` has none of them, so it reads as prose to both. On top of that,
+`TicketVerdict.Split` / `splitTicketReview` cut the text at the criteria heading and hand the finding
+parsers the head only, which also keeps the criteria table out of `parseAnalysis`'s `summary`
+fallback on an answer with no findings.
+`TicketVerdictTests.ParseFindings_reads_the_same_findings_with_or_without_the_verdict_section`
+asserts the first defence on the *unsplit* text, so it proves the second one is belt and braces.
+
+**Four verdicts, and the unreadable one is `no verificable`.** Both normalisers map anything they
+cannot read onto `no verificable` rather than onto `cumple`: the prompt's own standing order is to
+prefer a false alarm to approving incomplete work, and a verdict that would not parse is not
+evidence that a criterion was met.
+
+**Markers**: `VERBATIM` (both headers, the four verdict words, the three coverage words and the
+labels `Veredicto:` / `Evidencia:` / `Cobertura:` / `Faltante:` / `Fuera de alcance:` / `Resumen:`).
+The accents are part of them; both parsers accept a dropped one on the two `##` headers only, the
+same allowance `parseAnalysis.ts` makes for `Ubicacion`.
+
+---
+
+### XLANG-017 The ticket-review refusal prefixes
+**Implementation**: `src/CodeFlow.App/Tickets/TicketReview.cs` (`NotLinkedPrefix`, `SyncFailedPrefix`) · `renderer/src/lib/analyzeRefusal.ts`
+**Behaviour**: two sentinels in the family of `NOTHING_TO_ANALYZE: `, both with a trailing space.
+
+`TICKET_NOT_LINKED: ` — the branch has no ticket. A **state**, not a failure: the section shows how
+to link one, and the row does not stand in for the branch's last real review
+(`analyzeRefusal.isTicketRefusal`).
+
+`TICKET_SYNC_FAILED: ` — the work item could not be read **and** nothing usable was cached. This one
+is a genuine failure and is reported as one. It is raised only when both halves are true: a fetch
+that fails over a cache holding the work item runs the review anyway and says how old the copy is,
+because refusing would also withhold the finding half of the answer, which never needed the network.
+
+**Inputs / outputs**: `TicketReview.RunAsync` throws `AiRunFailedException` with the prefix in front
+of a Spanish sentence. `isTicketRefusal` matches `TICKET_NOT_LINKED: ` and `NOTHING_TO_ANALYZE: `
+with `startsWith` and deliberately **not** `TICKET_SYNC_FAILED: ` — hiding a sync failure behind a
+calm empty state is how a review silently stops running.
+
+**Markers**: `VERBATIM` (both prefixes). They depend on the same `jobsStore.run` normalisation
+`XLANG-015` documents.
 
 ---
 

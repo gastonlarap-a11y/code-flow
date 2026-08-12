@@ -57,12 +57,13 @@ public sealed class ReviewPostingFromLinkTests
 
         await fixture.PublishAsync(postSummary: true, summary: "resumen", Item("src/a.ts", "uno"));
 
-        // First, like the project-linked path: a summary under its own findings reads as a
-        // postscript to them.
+        // Last on Azure, like the project-linked path, and for the same reason: the overview shows
+        // the newest thread on top, so posting last is what puts the summary above the findings it
+        // introduces. `DIVERGENCE-PROV-d`.
         Assert.Equal(2, fixture.Writes.Count);
         Assert.Equal(
             "resumen",
-            JsonDocument.Parse(fixture.Writes[0].Body!).RootElement
+            JsonDocument.Parse(fixture.Writes[1].Body!).RootElement
                 .GetProperty("comments").EnumerateArray().Single().GetProperty("content").GetString());
     }
 

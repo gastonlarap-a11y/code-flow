@@ -107,7 +107,7 @@ public sealed class AiOperationsTests
         var engine = ScriptedEngine.Answering("nothing to say");
 
         var failure = await Assert.ThrowsAsync<AiRunFailedException>(() => AiOperations.AnalyzeChangesAsync(
-            engine.Runner, engine.Config(), Contexts, string.Empty, "/repo", string.Empty, null,
+            engine.Runner, engine.Config(), Contexts, string.Empty, ReviewScope.Working, "/repo", string.Empty, null,
             run: null, DateTimeOffset.UnixEpoch, Token));
 
         // The sentence is what `AI-024` documents; the prefix is what tells the renderer to show an
@@ -123,26 +123,107 @@ public sealed class AiOperationsTests
         var engine = ScriptedEngine.Answering("findings");
 
         await AiOperations.AnalyzeChangesAsync(
-            engine.Runner, engine.Config(), Contexts, "@@ -1 +1 @@", "/repo", string.Empty, "/tmp/mcp.json",
+            engine.Runner, engine.Config(), Contexts, "@@ -1 +1 @@", ReviewScope.Working, "/repo", string.Empty, "/tmp/mcp.json",
             run: null, DateTimeOffset.UnixEpoch, Token);
 
         Assert.Equal(
-            "PROJECT CONTEXT:\n- Conventions: two-space indent\n- Domain: orders are immutable\n\nDIFF:\n@@ -1 +1 @@",
+            "PROJECT CONTEXT:\n- Conventions: two-space indent\n- Domain: orders are immutable\n\n"
+            + $"SCOPE: {ReviewScopes.Describe(ReviewScope.Working)}\n\nDIFF:\n@@ -1 +1 @@",
             engine.Only.StdinContent);
         Assert.Equal("/repo", engine.Only.Cwd);
         Assert.Equal("/tmp/mcp.json", engine.Only.McpConfigPath);
     }
 
     [Fact]
-    public async Task An_analysis_with_no_enabled_context_sends_only_the_diff()
+    public async Task An_analysis_with_no_enabled_context_sends_only_the_scope_and_the_diff()
     {
         var engine = ScriptedEngine.Answering("findings");
 
         await AiOperations.AnalyzeChangesAsync(
-            engine.Runner, engine.Config(), [], "@@ -1 +1 @@", "/repo", string.Empty, null,
+            engine.Runner, engine.Config(), [], "@@ -1 +1 @@", ReviewScope.Working, "/repo", string.Empty, null,
             run: null, DateTimeOffset.UnixEpoch, Token);
 
-        Assert.Equal("DIFF:\n@@ -1 +1 @@", engine.Only.StdinContent);
+        Assert.Equal(
+            $"SCOPE: {ReviewScopes.Describe(ReviewScope.Working)}\n\nDIFF:\n@@ -1 +1 @@",
+            engine.Only.StdinContent);
+    }
+
+    [Theory]
+    // The wire spellings, so the parser is exercised alongside the line it feeds. `ReviewScope` is
+    // internal, and a public test method cannot take it as a parameter.
+    [InlineData("working", "no están commiteados")]
+    [InlineData("branch", "aporte completo de la rama")]
+    // Anything unrecognised is the cheaper scope: guessing the whole branch would spend a model's
+    // budget on a request that was already malformed.
+    [InlineData("nonsense", "no están commiteados")]
+    public async Task The_scope_line_tells_the_model_which_diff_it_is_looking_at(
+        string wire, string expected)
+    {
+        // The scope reaches the model as a labelled line rather than through the prompt, because
+        // `analyze_template` is a user-editable setting whose built-in text says "UNCOMMITTED
+        // changes" — anyone who had edited theirs would be describing the wrong diff.
+        var engine = ScriptedEngine.Answering("findings");
+
+        await AiOperations.AnalyzeChangesAsync(
+            engine.Runner, engine.Config(), [], "@@ -1 +1 @@", ReviewScopes.Parse(wire), "/repo", string.Empty,
+            null, run: null, DateTimeOffset.UnixEpoch, Token);
+
+        Assert.Contains(expected, engine.Only.StdinContent, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("working", true)]
+    [InlineData("branch", false)]
+    public async Task Judging_only_uncommitted_work_against_a_ticket_carries_its_caveat(
+        string wire, bool expected)
+    {
+        // <b>The guard rail this feature could not do without.</b> With three commits on the branch
+        // and something pending, a working-tree diff hides the evidence for everything already
+        // committed — so the model answers `no cumple` to criteria that are met. That is not a false
+        // positive of the kind the user accepted: it is systematic, and it discredits the verdict.
+        var engine = ScriptedEngine.Answering("verdict");
+
+        await AiOperations.ReviewBranchAgainstTicketAsync(
+            engine.Runner, engine.Config(), "3 · Bug · Algo", "cuerpo", "AC-1 …", "list", string.Empty,
+            "feature/x", "main", ReviewScopes.Parse(wire), [], "@@ -1 +1 @@", string.Empty, "/repo",
+            "standard", "completo", null, run: null, Token);
+
+        Assert.Equal(
+            expected,
+            engine.Only.StdinContent.Contains("`no verificable`, nunca `no cumple`", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_working_tree_ticket_review_names_no_base_branch()
+    {
+        // There is no base to compare against, and printing one would claim something about what was
+        // judged. The same reason the stored row's `base_ref` is left empty.
+        var engine = ScriptedEngine.Answering("verdict");
+
+        await AiOperations.ReviewBranchAgainstTicketAsync(
+            engine.Runner, engine.Config(), "3 · Bug · Algo", "cuerpo", "AC-1 …", "list", string.Empty,
+            "feature/x", "main", ReviewScopes.Parse("working"), [], "@@ -1 +1 @@", string.Empty, "/repo",
+            "standard", "completo", null, run: null, Token);
+
+        Assert.DoesNotContain("BASE:", engine.Only.StdinContent, StringComparison.Ordinal);
+        Assert.Contains("BRANCH: feature/x", engine.Only.StdinContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_empty_branch_contribution_is_refused_with_its_own_sentence()
+    {
+        // Two different facts behind one marker: a clean working tree is the ordinary state of a
+        // repository, while a branch contributing nothing over its base usually means the wrong base
+        // was picked — and the message is the only place that difference can be said.
+        var engine = ScriptedEngine.Answering("nothing to say");
+
+        var failure = await Assert.ThrowsAsync<AiRunFailedException>(() => AiOperations.AnalyzeChangesAsync(
+            engine.Runner, engine.Config(), [], string.Empty, ReviewScope.Branch, "/repo", string.Empty, null,
+            run: null, DateTimeOffset.UnixEpoch, Token));
+
+        Assert.Equal(
+            AiOperations.NothingToAnalyzePrefix + "Esta rama no aporta ningún cambio sobre su rama base",
+            failure.Message);
     }
 
     [Fact]
@@ -152,7 +233,7 @@ public sealed class AiOperationsTests
         var engine = ScriptedEngine.Answering("the findings", model: "claude-opus-4-6");
 
         var text = await AiOperations.AnalyzeChangesAsync(
-            engine.Runner, engine.Config(model: string.Empty), [], "diff", "/repo", string.Empty, null,
+            engine.Runner, engine.Config(model: string.Empty), [], "diff", ReviewScope.Working, "/repo", string.Empty, null,
             run: null, new DateTimeOffset(2026, 7, 29, 14, 5, 0, TimeSpan.Zero), Token);
 
         Assert.Equal(
@@ -166,7 +247,7 @@ public sealed class AiOperationsTests
         var engine = ScriptedEngine.Answering("the findings");
 
         var text = await AiOperations.AnalyzeChangesAsync(
-            engine.Runner, engine.Config(model: "  "), [], "diff", "/repo", string.Empty, null,
+            engine.Runner, engine.Config(model: "  "), [], "diff", ReviewScope.Working, "/repo", string.Empty, null,
             run: null, new DateTimeOffset(2026, 7, 29, 14, 5, 0, TimeSpan.Zero), Token);
 
         Assert.EndsWith("· Scripted (modelo predeterminado) · 2026-07-29 14:05", text, StringComparison.Ordinal);

@@ -21,6 +21,7 @@ internal static class Settings
     public static IEnumerable<(string Kind, string Content)> SeededPrompts =>
     [
         ("review_standard", Prompts.DefaultPrReviewStandard),
+        ("ticket_review_standard", Prompts.DefaultTicketReviewStandard),
         ("pr_description", Prompts.DefaultPrDescriptionTemplate),
     ];
 
@@ -60,6 +61,11 @@ internal static class Settings
     public static string DefaultWorkspacePrompt(string kind) => kind switch
     {
         "pr_description" => Prompts.DefaultPrDescriptionTemplate,
+        // Explicit, and it has to be: the catch-all below returns the PR methodology, so without
+        // this arm "restore default" on the ticket standard would hand back a prompt that never
+        // mentions a work item and never emits the two verdict sections. Nothing would fail — the
+        // review would simply stop reporting criteria, which reads as the model refusing to.
+        "ticket_review_standard" => Prompts.DefaultTicketReviewStandard,
         "sdd_stages" => string.Empty,
         // Every other kind, including "review_standard", lands here. The catch-all is the
         // reference's own shape, so an unrecognised kind returns the review methodology rather

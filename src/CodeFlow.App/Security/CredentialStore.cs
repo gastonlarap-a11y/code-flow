@@ -10,7 +10,31 @@ namespace CodeFlow.Security;
 /// then loses credentials without ever seeing an error. Never add a plaintext fallback here.
 /// </remarks>
 public sealed class CredentialStoreException(string message, Exception? inner = null)
-    : Exception(message, inner);
+    : Exception(message, inner)
+{
+    /// <summary>
+    /// Marks "the OS refused to hand the credential over" as distinct from "there isn't one".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same literal <c>ProviderException</c> and <c>AzureException.RefusedPrefix</c> already
+    /// use for a host's 401/403, reused rather than invented: to the person reading the screen the
+    /// two are the same situation — a saved credential that is not working — and the renderer
+    /// already strips this prefix and raises its "reconnect" state
+    /// (<c>renderer/src/state/prStore.ts</c>). A second sentinel would need a second UI path for
+    /// the same sentence. <c>13-cross-language-contracts.md</c> owns the literal.
+    /// </para>
+    /// <para>
+    /// <b>Why the keychain can refuse at all.</b> macOS binds a keychain item's ACL to the binary
+    /// that created it, and CodeFlow ships ad-hoc signed — <c>electronFuses.resetAdHocDarwinSignature</c>
+    /// rewrites that signature on every build. So an update can leave the app unable to read the
+    /// tokens its previous build saved. Nothing here can prevent that without a Developer ID
+    /// signature; what it can do is say so in a sentence the user can act on, instead of reporting
+    /// an <c>OSStatus</c>.
+    /// </para>
+    /// </remarks>
+    public const string RefusedPrefix = "CREDENTIAL_REFUSED: ";
+}
 
 /// <summary>
 /// The OS credential store: macOS Keychain, Windows Credential Manager.

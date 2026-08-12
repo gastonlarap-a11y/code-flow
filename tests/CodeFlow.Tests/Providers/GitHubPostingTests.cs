@@ -451,6 +451,18 @@ public sealed class GitHubPostingTests
             + string.Join(",", nodes) + "]}}}}}";
     }
 
+    [Fact]
+    public void GitHubs_conversation_runs_oldest_first_so_the_summary_is_posted_first()
+    {
+        // The other half of `DIVERGENCE-PROV-d`, and the reason the flag exists rather than a plain
+        // "post it last": the goal — the summary is the first thing read — is the same on both
+        // hosts, and it is reached from opposite ends. Flipping this to match Azure would bury the
+        // summary here instead.
+        using var http = new HttpClient(new FakeHttpHandler());
+
+        Assert.False(Host(http).DiscussionNewestFirst);
+    }
+
     private static JsonElement Body(FakeHttpHandler handler) =>
         JsonDocument.Parse(handler.Only.Body!).RootElement;
 

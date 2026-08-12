@@ -849,6 +849,67 @@ there". That skip is now gone, `IpcTestClient` opens the platform's real transpo
 opens the published endpoint **by its literal path** — a `NamedPipeClientStream` derives the path from
 a bare name exactly as the server does, so it would have agreed with the broken server and passed.
 
+### BOOT-035 No emitter in the shell may end the app, and nothing may end it silently
+**Implementation**: `shell/src/ipc-client.ts` (`attach`, `open`) · `shell/src/main.ts`
+(`startSidecar`, the two `process.on` handlers)
+**Behaviour**: every emitter the main process owns carries an `error` listener, and the process
+carries `uncaughtException` and `unhandledRejection` as a last resort — both of which **record and
+return** rather than exit. Node throws an `'error'` event that has no listener, and an uncaught
+exception in the Electron main process ends the app immediately: no window, no dialog, no crash
+report (nothing died by signal), and no line in `shell.log` (the process is gone before it can write
+one). Both places anyone would look are empty, which is why this reads to a user as "the app closed
+by itself".
+**Inputs / outputs**: a socket `'error'` marks the sidecar down with the channel named, exactly as
+`'close'` already did; a broken pipe on the core's `stdin`/`stdout`/`stderr` is recorded at `warn`
+and otherwise ignored, because the `exit` handler is what decides what a dead core means.
+**Edge cases**: `open`'s connection-phase handler is a `once` and is now **removed on connect**. Left
+in place it answered the first failure of a *live* connection as if it were a failed connection
+attempt — reconnecting a socket whose promise had already resolved, which nothing reads — and left
+the socket with no error listener at all from then on. So the transport was covered for exactly one
+failure per channel and bare after it.
+**Frontend dependency**: `SidecarBanner`, through the `down` status the socket error now produces.
+**Markers**: `BUG-BOOT-b` — **fixed**.
+
+### BOOT-036 Every quit names who asked for it
+**Implementation**: `shell/src/main.ts` (`requestQuit`, the `before-quit` / `render-process-gone` /
+`child-process-gone` handlers) · `shell/src/preload.ts` (`quit`) ·
+`renderer/src/lib/ipc/commands.ts` · `renderer/src/lib/bridge/updater.ts`
+**Behaviour**: every deliberate exit goes through `requestQuit(reason)`, which writes
+`[shell] quitting: <reason>` before setting the flag. The renderer's `quit` carries a reason across
+the bridge, so its three callers — Settings' button, `reset_app_data` and the updater's relaunch —
+are told apart; the last two are quits the user did not ask for in so many words.
+**Inputs / outputs**: the reason is validated **in the preload**, which is the security boundary: a
+non-string is dropped rather than stringified, and the text is capped, so nothing the renderer can
+construct decides the shape of a log line.
+**Edge cases**: `before-quit` finding the flag still down means the quit came from outside this file
+— macOS terminating the app, a signal, Electron itself — and records a stack, which is the only case
+reading the source cannot narrow down. Until this existed the log held just
+`the CodeFlow core it exited with code unknown` at `INFO`, which is the *consequence* of a quit and
+names no cause; a user reporting "it closed by itself" could not be answered from it.
+**Frontend dependency**: `host.quit(reason)` — the parameter is required, so a new caller cannot
+join anonymously.
+**Markers**: none
+
+### BOOT-037 The core leads its own process group, so a signal meant for a CLI cannot end the app
+**Implementation**: `shell/src/main.ts` (`startSidecar`'s `detached: true`, the three signal handlers)
+**Behaviour**: the core is spawned `detached`, which is `setsid()`: it leads its own process group and
+so does everything beneath it. Without it the app, the core, the AI CLI the core spawns and that
+CLI's own MCP servers all share **one** group — the one Electron inherited from launchd — and a
+group-wide signal raised anywhere inside it reaches the app.
+**Inputs / outputs**: no lifetime change. `stopSidecar` signals the child by pid and escalates to
+`SIGKILL` after `SIGKILL_GRACE_MS`; Node never killed children of its own accord, so an orphan after
+an abnormal exit was already the behaviour.
+**Edge cases**: this is why "the app closes when I press stop" left nothing behind. Stopping a run
+kills the CLI's process tree; one millisecond later AppKit began a **graceful** terminate, because a
+`SIGTERM` does not crash an AppKit app — it calls `applicationShouldTerminate:`, which is where
+Electron emits `before-quit`. No crash report (nothing faulted), no exception (nothing threw), and no
+`app.quit()` anywhere in the stack (the emit came from native code). Confirmed in the unified system
+log: two of the CLI's MCP servers exited at `.732` and `.736`, and `before-quit` fired at `.737`.
+The signal handlers now record `SIGTERM`/`SIGINT`/`SIGHUP` and still quit — refusing would make the
+app unkillable by ordinary means — so the next occurrence is one line instead of a silence.
+**Frontend dependency**: none.
+**Markers**: `BUG-BOOT-c` — **fixed**.
+
 ### BOOT-030 A startup failure is recorded before it ends the process
 **Implementation**: `src/CodeFlow.App/Program.cs` (`Stage`) · `src/CodeFlow.App/Diagnostics/StartupLog.cs`
 **Behaviour**: steps 1–3 of `RunAsync` each run through `Stage(name, work)`, which catches, calls
@@ -913,6 +974,8 @@ panel that the outage makes inert.
 |---|---|---|
 | `DIVERGENCE-BOOT-a` | BOOT-003 | `base_dir()` hardcodes `C:\CodeFlow` on Windows instead of `%LOCALAPPDATA%`; every derived path depends on it; the uninstaller hardcodes the same literal independently. |
 | `DIVERGENCE-BOOT-b` | BOOT-017 | `reset_app_data` (and the deletion it schedules) never touches OS-keychain-stored secrets, matching the Windows uninstaller's identical scope. |
+| `BUG-BOOT-c` (fixed) | BOOT-037 | The core was spawned into the app's own process group, so a group-wide signal from a stopped AI CLI reached Electron and terminated it gracefully. Reported as "I press stop and the app closes"; it left no crash report, no exception and no `app.quit()` in any stack, and was only found in the unified system log. |
+| `BUG-BOOT-b` (fixed) | BOOT-035 | Neither the channel sockets nor the core's three pipes had an `error` listener, and the main process had no `uncaughtException` handler. One `'error'` event on a live connection was thrown, which ended the app mid-action — leaving no crash report and no log line, so it was indistinguishable from the app quitting on purpose. |
 | `BUG-BOOT-a` (fixed) | BOOT-034 | The Windows listener passed the full `\\.\pipe\…` path to `NamedPipeServerStream` as if it were a pipe name, so it listened at an address the shell could not open. Every command failed; the app looked like it had dead buttons. Fixed, with the Windows skip removed from all four IPC suites. |
 
 No `AMBIGUOUS-BOOT-*` or `BUG-BOOT-*` markers were raised: the files in this document's scope

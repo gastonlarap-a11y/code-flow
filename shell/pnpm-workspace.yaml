@@ -21,6 +21,14 @@ overrides:
   # Caught by `scripts/release.sh` before it wrote anything, which is what that step is for.
   fast-uri@<3.1.5: ^3.1.5
 
+  # Thirteen paths into this tree, every one of them through electron-builder, so the quadratic
+  # `!!omap` parse is build-time like the two above — and pinned for the same reason: the gate does
+  # not grade on exploitability. 4.3.1 is a patch inside the 4.x line electron-builder already asks
+  # for, so the pin costs nothing (GHSA-5p4m-2wfm-xmqj, CVE-2026-59870).
+  #
+  # Third advisory to land on this file mid-release, which is the pattern rather than the exception.
+  js-yaml@<4.3.1: ^4.3.1
+
 # pnpm refuses to run a dependency's install scripts unless it is approved here. That approval used
 # to live in `node_modules/.modules.yaml`, which is not version-controlled — so it survived only
 # until someone deleted the directory, and then `pnpm install` exits 1 with nothing to say the

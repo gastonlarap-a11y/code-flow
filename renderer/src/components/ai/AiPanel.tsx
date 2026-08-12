@@ -50,6 +50,8 @@ export function AiPanel() {
   const tabs = useMemo<TabOption<AiTab>[]>(
     () => [
       { id: "chat", labelKey: "chat.title", icon: MessageSquare },
+      // One tab for both axes of a review: which diff, and whether the ticket is judged too. They
+      // were two tabs, which made two of the four combinations unreachable.
       { id: "analyze", labelKey: "analyze.title", icon: ShieldCheck },
       { id: "pr", labelKey: "ai.prReview", icon: GitPullRequest, disabled: !selectedPr },
     ],
@@ -153,7 +155,7 @@ export function AiPanel() {
               {tab === "pr" && selectedPr ? (
                 <PrReviewSection target={{ kind: "project", projectId: project.id }} pr={selectedPr} />
               ) : tab === "analyze" ? (
-                <AnalyzeSection projectId={project.id} />
+                <AnalyzeSection project={project} />
               ) : (
                 <ChatSection projectId={project.id} />
               )}

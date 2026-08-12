@@ -433,23 +433,28 @@ blank/whitespace-only name — rejected by `resolve_new_path`
 **Frontend dependency**: `FileTree.tsx` (drag-and-drop calls `move_path`/`create_dir`/`create_file`), `renderer/src/lib/ipc/commands.ts`.
 **Markers**: `BUG-FILE-a` **closed** — the not-on-disk fallback normalises lexically before the check; same shape as the shell's `isWithinRoot` (F0.6).
 
-### FILE-017 Whether an entry is a directory comes from the entry, not a second look at the disk
-**Implementation**: `src/CodeFlow.App/Files/FileOps.cs` (`ListDir`) · `src/CodeFlow.App/Files/RepoWalk.cs` (`Walk`)
-**Behaviour**: both walks enumerate `FileSystemInfo` and read
-`Attributes.HasFlag(FileAttributes.Directory)` from what the enumeration already produced. Neither
-enumerates names and then asks `Directory.Exists` about them again.
-**Inputs / outputs**: unchanged — `FileEntry.is_dir` carries the same answer, for one `stat` per
-entry instead of two.
-**Edge cases**: the second look was a time-of-check race, and it had a visible symptom. A listing
-taken while a bulk operation moved directories around — a checkout, a pull, a branch switch — could
-answer "not a directory" for folders that plainly are, and the explorer cached that answer: the tree
-showed the repository's root files with **none of its folders** until something re-listed. In
-`RepoWalk` the same race is silent instead: the walk stops descending, and every file beneath that
-directory disappears from search and from "go to file" with nothing to say so.
-A symlink to a directory still reports as one — `Directory.Exists` follows the link, and the entry's
-attributes carry `Directory` alongside `ReparsePoint`. That agreement is pinned by a test rather than
-assumed, because it is the one behaviour that could have shifted.
-**Frontend dependency**: `FileTree.tsx`, through `is_dir`.
+### FILE-017 A listing is right or it fails — it never guesses what an entry is
+**Implementation**: `src/CodeFlow.App/Files/FileOps.cs` (`ListDir`) · `src/CodeFlow.App/Files/RepoWalk.cs` (`Walk`) ·
+`renderer/src/components/editor/FileTree.tsx` (the mount and `refresh` failure paths)
+**Behaviour**: both walks classify with `info is DirectoryInfo`, from the `FileSystemInfo` the
+enumeration produced. Neither enumerates names and then asks `Directory.Exists` about them again.
+**Inputs / outputs**: unchanged — `FileEntry.is_dir` carries the same answer whenever there is one.
+**Edge cases**: the second look could be **refused while the enumeration succeeded**, and that is not
+hypothetical. Selecting a repository under a TCC-protected folder — Documents, Desktop — puts macOS's
+permission prompt in front of the user, and the listing already in flight is answered without the
+access it needed. `Directory.Exists` returns `false` when access is denied, so **every folder was
+reported as a file**; the explorer cached that, and granting the permission changed nothing because
+nothing re-listed. The tree showed the repository's root files with none of its folders until the
+side panel was switched away and back, which unmounts `FileTree` and lists again. In `RepoWalk` the
+same answer is silent instead: the walk stops descending and every file beneath disappears from
+search and from "go to file".
+What the classification guarantees is not that it always knows — where the metadata is unreadable
+.NET throws rather than misclassify — but that it never answers **wrongly**. Loud is the point: the
+mount and refresh paths report the failure, refresh keeps the last good listing rather than replacing
+it with what survived, and a test pins the refusal using a directory that is readable but not
+traversable, which is the same split a permission prompt opens up. A symlink to a directory still
+reports as one, pinned by its own test since that is the behaviour the change could have shifted.
+**Frontend dependency**: `FileTree.tsx`, through `is_dir` and through the two failure messages.
 **Markers**: `BUG-FILE-a` — **fixed**.
 
 ### FILE-002 `list_dir` sorts directories first, then case-insensitively by name

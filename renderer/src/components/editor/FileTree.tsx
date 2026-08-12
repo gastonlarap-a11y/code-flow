@@ -260,9 +260,17 @@ export function FileTree({
     setExpanded(new Set());
     setFocus({ path: "", isDir: true });
     setDraft(null);
-    void listDir(repoPath).then((entries) => {
-      if (!cancelled) setChildrenByDir(new Map([["", entries]]));
-    });
+    void listDir(repoPath).then(
+      (entries) => {
+        if (!cancelled) setChildrenByDir(new Map([["", entries]]));
+      },
+      (error: unknown) => {
+        // Reported rather than dropped. A rejected first listing left the tree on its skeleton for
+        // as long as the panel stayed open, with nothing anywhere saying the repository could not
+        // be read — and the most likely reason is a permission the user has not granted yet.
+        if (!cancelled) pushErrorToast(String(error));
+      },
+    );
     return () => {
       cancelled = true;
     };

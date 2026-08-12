@@ -220,13 +220,49 @@ public sealed class FileOpsTests
     }
 
     [Fact]
+    public void A_listing_that_cannot_classify_its_entries_refuses_instead_of_guessing()
+    {
+        // `FILE-017`. The failure this closes was not a wrong listing but a *silent* one: with the
+        // metadata unreadable, `Directory.Exists` answers `false` and every folder in the listing
+        // was reported as a file — which the explorer then cached, so granting the permission
+        // changed nothing. Classifying from the enumeration cannot produce that answer: it either
+        // knows, or it throws. Loud is the guarantee; `FileTree` turns the throw into a message and
+        // keeps the last good listing.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "POSIX modes are what make the metadata unreadable.");
+
+        using var repo = new TempDirectory();
+        var listable = Path.Combine(repo.Path, "listable");
+        Directory.CreateDirectory(Path.Combine(listable, "inner"));
+
+        // Guarded with the platform check rather than left to the skip above: `CA1416` is an error
+        // here and it reads `if`, not a call to `Assert`.
+        if (!OperatingSystem.IsWindows())
+        {
+            // Read without execute is the shape that matters, and the one a permission prompt opens
+            // up underneath a listing already in flight: `readdir` needs read and answers with every
+            // name, while `stat` needs execute and is refused.
+            File.SetUnixFileMode(listable, UnixFileMode.UserRead);
+
+            try
+            {
+                Assert.ThrowsAny<UnauthorizedAccessException>(() => FileOps.ListDir(repo.Path, "listable"));
+            }
+            finally
+            {
+                // Restored, or the temp directory cannot be cleaned up.
+                File.SetUnixFileMode(
+                    listable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+    }
+
+    [Fact]
     public void A_symlink_to_a_directory_is_still_a_directory()
     {
-        // The one behaviour that could have shifted when `Directory.Exists(path)` was replaced by
-        // the attributes of what the enumeration already read (`FILE-007`). `Directory.Exists`
-        // follows the link and answers for the target; the attributes describe the entry, which
-        // also carries `ReparsePoint`. If those two ever disagreed, a linked folder would list as a
-        // file and stop opening — so the agreement is pinned rather than assumed.
+        // The other behaviour that could have shifted with the classification (`FILE-017`).
+        // `Directory.Exists` followed the link and answered for its target; the enumeration
+        // classifies the entry. If those two ever disagreed a linked folder would list as a file and
+        // stop opening, so the agreement is pinned rather than assumed.
         Assert.SkipWhen(OperatingSystem.IsWindows(), "creating a symlink needs elevation on Windows.");
 
         using var repo = new TempDirectory();

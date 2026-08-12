@@ -89,7 +89,10 @@ internal static class RepoWalk
             }
 
             var childRel = rel.Length == 0 ? name : $"{rel}/{name}";
-            var isDirectory = child.Attributes.HasFlag(FileAttributes.Directory);
+            // From the enumeration's own classification, like `FileOps.ListDir` and for the same
+            // reason: anything else needs a `stat`, and a `stat` can be refused while the
+            // enumeration succeeds (`FILE-017`).
+            var isDirectory = child is DirectoryInfo;
 
             // git wants a trailing slash to answer "is this *directory* ignored" for rules like
             // `build/`; without it a directory-only rule does not match and we would descend anyway.

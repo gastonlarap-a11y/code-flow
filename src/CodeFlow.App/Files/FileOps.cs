@@ -21,17 +21,21 @@ public static class FileOps
     /// <summary>One directory level, directories first, then case-insensitively by name (<c>FILE-002</c>).</summary>
     /// <remarks>
     /// <para>
-    /// Whether an entry is a directory comes from the <see cref="FileSystemInfo"/> the enumeration
-    /// already produced, not from a second <c>Directory.Exists</c> on the same path. That second
-    /// look was a time-of-check race, and it had a symptom: a listing taken while a bulk operation
-    /// moved directories around — a checkout, a pull, a branch switch — could answer "not a
-    /// directory" for folders that plainly are, and the explorer cached the answer. The tree then
-    /// showed the repository's root files with none of its folders until something re-listed
-    /// (<c>FILE-007</c>).
+    /// <b>An entry is a directory when the enumeration says so — <c>info is DirectoryInfo</c> —
+    /// and never because a second syscall was asked about it.</b> The enumeration classifies from
+    /// what <c>readdir</c> already returned; every other way of asking needs a <c>stat</c>, and a
+    /// <c>stat</c> can be refused while the enumeration itself succeeds.
     /// </para>
     /// <para>
-    /// It is also one <c>stat</c> per entry instead of two, on the path walked every time a
-    /// directory is expanded.
+    /// That refusal is not hypothetical, and it is what <c>FILE-017</c> exists for. Selecting a
+    /// repository under a TCC-protected folder — Documents, Desktop — puts macOS's permission
+    /// prompt in front of the user, and the listing already in flight is answered without the
+    /// access it needed. Both earlier spellings turned that into silence: <c>Directory.Exists</c>
+    /// returns <see langword="false"/> when access is denied, and <c>Attributes</c> comes back
+    /// unreadable. Every folder was reported as a file, the explorer cached it, and granting the
+    /// permission changed nothing because nothing re-listed. The tree showed the repository's root
+    /// files with none of its folders until the panel was switched away and back, which unmounts
+    /// it and lists again.
     /// </para>
     /// </remarks>
     public static IReadOnlyList<FileEntry> ListDir(string repoPath, string? subPath)
@@ -52,8 +56,7 @@ public static class FileOps
             }
 
             var rel = subPath is null ? info.Name : $"{subPath}/{info.Name}";
-            var isDirectory = info.Attributes.HasFlag(FileAttributes.Directory);
-            entries.Add(new FileEntry(info.Name, rel.Replace('\\', '/'), isDirectory));
+            entries.Add(new FileEntry(info.Name, rel.Replace('\\', '/'), info is DirectoryInfo));
         }
 
         // OrderBy is a stable sort, which sort_by is too: two entries the comparison calls equal

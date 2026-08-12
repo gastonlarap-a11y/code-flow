@@ -61,6 +61,7 @@ internal static class Migrations
         AddProviderToWorkspaceAgents(connection);
         RealignReviewRunWorkspaces(connection);
         AddGitIdentityToWorkspaces(connection);
+        AddAdoOrgToWorkspaces(connection);
     }
 
     /// <summary>
@@ -337,6 +338,7 @@ internal static class Migrations
         foreach (var (kind, text) in new[]
                  {
                      ("review_standard", Prompts.DefaultPrReviewStandard),
+                     ("ticket_review_standard", Prompts.DefaultTicketReviewStandard),
                      ("pr_description", Prompts.DefaultPrDescriptionTemplate),
                  })
         {
@@ -445,6 +447,17 @@ internal static class Migrations
     {
         AddColumn(connection, "workspaces", "git_name", "TEXT");
         AddColumn(connection, "workspaces", "git_email", "TEXT");
+    }
+
+    /// <summary>Which Azure DevOps organisation a workspace's tickets come from.</summary>
+    /// <remarks>
+    /// No ordering constraint: nothing else reads or writes the column, and a null means "not
+    /// chosen" rather than a value to be backfilled.
+    /// </remarks>
+    private static void AddAdoOrgToWorkspaces(SqliteConnection connection)
+    {
+        AddColumn(connection, "workspaces", "ado_org", "TEXT");
+        AddColumn(connection, "workspaces", "ado_project", "TEXT");
     }
 
     // -----------------------------------------------------------------------

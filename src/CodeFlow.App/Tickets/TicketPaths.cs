@@ -53,13 +53,44 @@ internal static class TicketPaths
     }
 
     /// <summary>
+    /// Where a ticket's mirror goes: where it already is, or a fresh name from its title.
+    /// </summary>
+    /// <remarks>
+    /// <b>A mirror never moves.</b> The directory used to be recomputed from the current title on
+    /// every sync, so renaming the work item on the board silently relocated it — and left the
+    /// user's <c>notes/</c>, the one thing in there nobody else owns, stranded in a directory the
+    /// app would never open again. Nothing moved them and nothing said so. <c>WI-003</c> promises
+    /// that directory survives a resync; this is what makes the promise hold across a rename, and it
+    /// is a named function rather than a condition inside the sync so it can be stated once and
+    /// tested without a network or a keychain.
+    /// </remarks>
+    /// <param name="existing">
+    /// The <c>mirror_path</c> already cached for this ticket, or <see langword="null"/> the first
+    /// time it is seen. Blank counts as absent — a row written before this column meant anything.
+    /// </param>
+    public static string MirrorFor(
+        string? existing, string root, string org, string project, string externalId, string title) =>
+        string.IsNullOrWhiteSpace(existing)
+            ? DirectoryFor(root, org, project, externalId, title)
+            : existing;
+
+    /// <summary>
     /// Reduces arbitrary text to one safe path segment.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately stricter than the filesystem requires — ASCII letters, digits and single
     /// hyphens — rather than filtering the characters each platform rejects. A project named
     /// <c>Payments/Core</c> or a title carrying a colon has to survive on macOS and Windows alike,
     /// and the set that is safe everywhere is small enough to state positively.
+    /// </para>
+    /// <para>
+    /// <b>Case is preserved.</b> It used to be lower-cased, and a user who opened the folder for
+    /// <em>CF-E2E Ajuste de tabla (criterios en prosa)</em> found
+    /// <c>3-cf-e2e-ajuste-de-tabla-criterios-en-prosa</c> and reported it as wrong. It was not
+    /// wrong, but it was unreadable, and nothing was gained by it: the characters that make a path
+    /// awkward are spaces and punctuation, not capitals. Both are still gone.
+    /// </para>
     /// </remarks>
     public static string Slug(string value)
     {
@@ -69,7 +100,7 @@ internal static class TicketPaths
         {
             if (char.IsAsciiLetterOrDigit(character))
             {
-                builder.Append(char.ToLowerInvariant(character));
+                builder.Append(character);
             }
             else if (Folded(character) is { } folded)
             {
@@ -99,24 +130,36 @@ internal static class TicketPaths
     /// directory <c>facturaci-n</c>, which is exactly the unreadable result the folding exists to
     /// prevent.
     /// <para>
-    /// Both cases are listed instead of lower-casing first, because whether invariant mode maps
-    /// non-ASCII case at all is a platform detail this should not depend on. The table covers the
-    /// Latin-1 range the app's own languages use; anything outside it still degrades to a hyphen,
-    /// which is correct for scripts that have no ASCII spelling.
+    /// Both cases are listed — and now spell their ASCII replacement in the matching case — because
+    /// whether invariant mode maps non-ASCII case at all is a platform detail this should not depend
+    /// on. Calling <c>ToUpperInvariant</c> on the folded result would be the same bet in a different
+    /// place. The table covers the Latin-1 range the app's own languages use; anything outside it
+    /// still degrades to a hyphen, which is correct for scripts that have no ASCII spelling.
     /// </para>
     /// </remarks>
     private static string? Folded(char character) => character switch
     {
-        'á' or 'à' or 'â' or 'ä' or 'ã' or 'å' or 'Á' or 'À' or 'Â' or 'Ä' or 'Ã' or 'Å' => "a",
-        'é' or 'è' or 'ê' or 'ë' or 'É' or 'È' or 'Ê' or 'Ë' => "e",
-        'í' or 'ì' or 'î' or 'ï' or 'Í' or 'Ì' or 'Î' or 'Ï' => "i",
-        'ó' or 'ò' or 'ô' or 'ö' or 'õ' or 'ø' or 'Ó' or 'Ò' or 'Ô' or 'Ö' or 'Õ' or 'Ø' => "o",
-        'ú' or 'ù' or 'û' or 'ü' or 'Ú' or 'Ù' or 'Û' or 'Ü' => "u",
-        'ñ' or 'Ñ' => "n",
-        'ç' or 'Ç' => "c",
-        'ý' or 'ÿ' or 'Ý' => "y",
-        'æ' or 'Æ' => "ae",
-        'œ' or 'Œ' => "oe",
+        'á' or 'à' or 'â' or 'ä' or 'ã' or 'å' => "a",
+        'Á' or 'À' or 'Â' or 'Ä' or 'Ã' or 'Å' => "A",
+        'é' or 'è' or 'ê' or 'ë' => "e",
+        'É' or 'È' or 'Ê' or 'Ë' => "E",
+        'í' or 'ì' or 'î' or 'ï' => "i",
+        'Í' or 'Ì' or 'Î' or 'Ï' => "I",
+        'ó' or 'ò' or 'ô' or 'ö' or 'õ' or 'ø' => "o",
+        'Ó' or 'Ò' or 'Ô' or 'Ö' or 'Õ' or 'Ø' => "O",
+        'ú' or 'ù' or 'û' or 'ü' => "u",
+        'Ú' or 'Ù' or 'Û' or 'Ü' => "U",
+        'ñ' => "n",
+        'Ñ' => "N",
+        'ç' => "c",
+        'Ç' => "C",
+        'ý' or 'ÿ' => "y",
+        'Ý' => "Y",
+        'æ' => "ae",
+        // "Ae", not "AE": it sits inside a word, where an all-caps pair reads as an acronym.
+        'Æ' => "Ae",
+        'œ' => "oe",
+        'Œ' => "Oe",
         'ß' => "ss",
         _ => null,
     };

@@ -45,9 +45,38 @@ public sealed class SettingsTests
     [Theory]
     [InlineData("pr_description")]
     [InlineData("review_standard")]
+    [InlineData("ticket_review_standard")]
     [InlineData("anything_unrecognised")]
     public void Every_prompt_kind_except_sdd_stages_has_non_empty_built_in_text(string kind) =>
         Assert.NotEqual(string.Empty, Settings.DefaultWorkspacePrompt(kind));
+
+    /// <summary>
+    /// The ticket standard needs its own arm, and this is what proves the arm is there.
+    /// </summary>
+    /// <remarks>
+    /// The catch-all above it returns the PR methodology, so a missing arm would make "restore
+    /// default" hand back a prompt that never mentions a work item and never emits the two verdict
+    /// sections — without failing anywhere. The review would simply stop reporting criteria, which
+    /// reads as the model refusing rather than as a settings bug.
+    /// </remarks>
+    [Fact]
+    public void The_ticket_review_standard_does_not_fall_through_to_the_pr_one()
+    {
+        Assert.Equal(Prompts.DefaultTicketReviewStandard, Settings.DefaultWorkspacePrompt("ticket_review_standard"));
+        Assert.NotEqual(Prompts.DefaultPrReviewStandard, Settings.DefaultWorkspacePrompt("ticket_review_standard"));
+        Assert.Contains("## VEREDICTO DE COBERTURA", Settings.DefaultWorkspacePrompt("ticket_review_standard"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_new_workspace_is_seeded_with_the_ticket_review_standard()
+    {
+        using var db = new TempDatabase();
+        var workspace = db.Use(c => WorkspaceStore.Create(c, "First", "folder", "#6366f1"));
+
+        Assert.Equal(
+            Prompts.DefaultTicketReviewStandard,
+            db.Use(c => Settings.GetWorkspacePrompt(c, workspace.Id, "ticket_review_standard")));
+    }
 
     [Fact]
     public void The_built_in_for_an_unrecognised_kind_is_the_review_methodology()

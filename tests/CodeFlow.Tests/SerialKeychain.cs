@@ -13,18 +13,20 @@ namespace CodeFlow.Tests;
 /// keychain, reached through both the Security framework and the <c>security</c> CLI.
 /// </para>
 /// <para>
-/// <b>Under parallel load that contention is observable.</b>
-/// <c>CredentialStoreTests.A_stored_secret_is_visible_to_a_separate_process</c> has failed with
-/// exit code 24 from <c>/usr/bin/security</c> roughly once in seven full-suite runs, and passes
-/// every time in isolation. Each test uses a per-instance GUID key, so it is not a collision over
-/// one entry; it is the keychain itself refusing concurrent access.
+/// <b>Serialising these is worth doing on its own merits</b> — several classes writing to one
+/// keychain under parallel load is a race worth not having, and the keys are per-instance GUIDs so
+/// nothing here depends on ordering.
 /// </para>
 /// <para>
-/// <b>This reduces the contention rather than removing it.</b> xUnit only serialises within a
-/// collection, so these six classes no longer overlap each other — but other collections still run
-/// alongside them, and nothing here can stop another application on the machine from talking to the
-/// same keychain. If the failure reappears, that is why, and it is a test-environment problem
-/// rather than a defect in <see cref="CodeFlow.Security.CredentialStore"/>.
+/// <b>What this is not for.</b> An earlier version of this comment claimed it was mitigating the
+/// intermittent failure of
+/// <c>CredentialStoreTests.A_stored_secret_is_visible_to_a_separate_process</c>, which exited 24
+/// from <c>/usr/bin/security</c>. That diagnosis was wrong. macOS binds a keychain item's ACL to
+/// the binary that created it, and the test was asking <c>security</c> — a different binary — for
+/// the <em>secret</em> rather than the item, which needs an authorisation prompt nobody was there
+/// to answer. Concurrency was never involved: it failed the same way run entirely alone. That test
+/// now reads attributes instead, and is deterministic. If it fails again it means the credential
+/// really was not stored.
 /// </para>
 /// </remarks>
 [CollectionDefinition(Name, DisableParallelization = true)]

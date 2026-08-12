@@ -31,7 +31,19 @@ internal static class Schema
             sort_order  INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL,
             git_name    TEXT,
-            git_email   TEXT
+            git_email   TEXT,
+            -- Which Azure DevOps organisation this workspace's tickets come from. NULL means the
+            -- user has not chosen, and the resolution falls through to the project's own link.
+            -- Separate from projects.ado_org on purpose: a board can live in a different
+            -- organisation from the code, which is what having work and personal projects in one
+            -- app looks like.
+            ado_org     TEXT,
+            -- Which Azure DevOps project inside that organisation holds the board. NULL falls
+            -- through to projects.ado_project. It needs its own column for the same reason the
+            -- organisation does, plus one more: a repository hosted on GitHub has no
+            -- projects.ado_project at all, and without this there would be nowhere to say where
+            -- its tickets live.
+            ado_project TEXT
         );
 
         CREATE TABLE IF NOT EXISTS projects (

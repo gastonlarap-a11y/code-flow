@@ -269,6 +269,26 @@ public sealed class MigrationTests : IDisposable
     }
 
     [Fact]
+    public void An_existing_workspaces_table_gains_the_ticket_account_pair()
+    {
+        // Both columns, and they arrive together: an organisation without the project inside it
+        // addresses no board, which is the state that made the work-items picker unusable on a
+        // repository hosted anywhere but Azure (`WI-005`).
+        using var connection = OpenSeeded("sql/migrations-legacy-pre-workspace.sql");
+
+        Assert.True(HasColumn(connection, "workspaces", "ado_org"));
+        Assert.True(HasColumn(connection, "workspaces", "ado_project"));
+
+        // Pre-existing rows read as "not chosen", so the resolution falls through to the
+        // repository's own link rather than to an empty string that addresses nothing.
+        Assert.Null(Scalar(connection, "SELECT ado_org FROM workspaces LIMIT 1"));
+        Assert.Null(Scalar(connection, "SELECT ado_project FROM workspaces LIMIT 1"));
+
+        Migrations.Run(connection);
+        Assert.True(HasColumn(connection, "workspaces", "ado_project"));
+    }
+
+    [Fact]
     public void A_review_run_stranded_by_a_pre_fix_move_is_realigned_with_its_project()
     {
         // The backfill half of BUG-STORE-b's fix: moves made before move_project_to_workspace

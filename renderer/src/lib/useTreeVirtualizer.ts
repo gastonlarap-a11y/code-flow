@@ -26,7 +26,12 @@ export function useTreeVirtualizer<Row extends { id: string }>(
     // to guess 24 for rows that measured 23.5px because their height fell out of `py-0.5` around
     // 13px text. `measureElement` still corrects it, but there is nothing left to correct.
     estimateSize: () => rowHeight,
-    getItemKey: (index) => rows[index]!.id,
+    // Guarded rather than asserted with `!`. The virtualizer can ask for a key at an index the
+    // list no longer reaches, for the render between a collapse shrinking `rows` and the
+    // re-measure — the same window `VirtualizedTree` already guards when it renders. Throwing
+    // there would take the whole tree down; falling back to the index only costs that one row its
+    // identity for one frame.
+    getItemKey: (index) => rows[index]?.id ?? index,
     overscan: 10,
   });
 }

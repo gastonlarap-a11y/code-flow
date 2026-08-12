@@ -220,6 +220,29 @@ public sealed class FileOpsTests
     }
 
     [Fact]
+    public void A_symlink_to_a_directory_is_still_a_directory()
+    {
+        // The one behaviour that could have shifted when `Directory.Exists(path)` was replaced by
+        // the attributes of what the enumeration already read (`FILE-007`). `Directory.Exists`
+        // follows the link and answers for the target; the attributes describe the entry, which
+        // also carries `ReparsePoint`. If those two ever disagreed, a linked folder would list as a
+        // file and stop opening — so the agreement is pinned rather than assumed.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "creating a symlink needs elevation on Windows.");
+
+        using var repo = new TempDirectory();
+        FileOps.CreateFile(repo.Path, "real/inside.ts");
+        Directory.CreateSymbolicLink(Path.Combine(repo.Path, "linked"), Path.Combine(repo.Path, "real"));
+
+        var entries = FileOps.ListDir(repo.Path, subPath: null);
+
+        Assert.True(entries.Single(e => e.Name == "linked").IsDir);
+
+        // Whether the tree may then list *through* that link is `PathGuards.ResolveWithinRepo`'s
+        // decision — it canonicalises and refuses what lands outside the root — and is deliberately
+        // not this test's subject.
+    }
+
+    [Fact]
     public void A_subdirectory_listing_reports_repo_relative_paths()
     {
         using var repo = new TempDirectory();

@@ -19,6 +19,21 @@ public static class FileOps
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>One directory level, directories first, then case-insensitively by name (<c>FILE-002</c>).</summary>
+    /// <remarks>
+    /// <para>
+    /// Whether an entry is a directory comes from the <see cref="FileSystemInfo"/> the enumeration
+    /// already produced, not from a second <c>Directory.Exists</c> on the same path. That second
+    /// look was a time-of-check race, and it had a symptom: a listing taken while a bulk operation
+    /// moved directories around — a checkout, a pull, a branch switch — could answer "not a
+    /// directory" for folders that plainly are, and the explorer cached the answer. The tree then
+    /// showed the repository's root files with none of its folders until something re-listed
+    /// (<c>FILE-007</c>).
+    /// </para>
+    /// <para>
+    /// It is also one <c>stat</c> per entry instead of two, on the path walked every time a
+    /// directory is expanded.
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<FileEntry> ListDir(string repoPath, string? subPath)
     {
         var target = subPath is null
@@ -27,19 +42,18 @@ public static class FileOps
 
         var entries = new List<FileEntry>();
 
-        foreach (var path in Directory.EnumerateFileSystemEntries(target))
+        foreach (var info in new DirectoryInfo(target).EnumerateFileSystemInfos())
         {
-            var name = Path.GetFileName(path);
-
             // Skipped by name, independently of gitignore: the explorer never shows git's own
             // storage, and no rule is consulted to decide that.
-            if (name == ".git")
+            if (info.Name == ".git")
             {
                 continue;
             }
 
-            var rel = subPath is null ? name : $"{subPath}/{name}";
-            entries.Add(new FileEntry(name, rel.Replace('\\', '/'), Directory.Exists(path)));
+            var rel = subPath is null ? info.Name : $"{subPath}/{info.Name}";
+            var isDirectory = info.Attributes.HasFlag(FileAttributes.Directory);
+            entries.Add(new FileEntry(info.Name, rel.Replace('\\', '/'), isDirectory));
         }
 
         // OrderBy is a stable sort, which sort_by is too: two entries the comparison calls equal

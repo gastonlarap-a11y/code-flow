@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { Socket } from "node:net";
 import { test } from "node:test";
-import { FrameReader } from "./ipc-client";
+import { FrameReader, IpcClient } from "./ipc-client";
 
 // What is covered is reassembly, because it is the one place in this file where a wrong answer is
 // silent rather than loud: a socket chooses its own chunk boundaries, and a reader that assumes one
@@ -63,4 +64,22 @@ test("a length past the cap throws instead of buffering forever", () => {
   header.writeUInt32LE(64 * 1024 * 1024 + 1, 0);
 
   assert.throws(() => reader.push(header), /exceeds the limit/);
+});
+
+test("a channel socket owns an error listener, so one cannot take the app down with it", () => {
+  const client = new IpcClient();
+  const socket = new Socket();
+
+  client.attach(socket, "rpc");
+
+  // Asserted as presence rather than as an effect, because the effect *is* the absence of one: an
+  // `'error'` with no listener is thrown by Node, and in the main process that ends the app.
+  assert.ok(socket.listenerCount("error") > 0, "the socket must handle its own errors");
+
+  // Two, not one. `open`'s connection-phase handler is a `once` — it used to be the only listener
+  // on the socket, so a live connection was covered for exactly one failure and bare after it.
+  assert.doesNotThrow(() => socket.emit("error", new Error("boom")));
+  assert.doesNotThrow(() => socket.emit("error", new Error("and again")));
+
+  socket.destroy();
 });

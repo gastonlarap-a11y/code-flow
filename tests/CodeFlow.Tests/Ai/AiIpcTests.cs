@@ -5,6 +5,7 @@ using CodeFlow.Ipc;
 using CodeFlow.Tests.Git;
 using CodeFlow.Tests.Ipc;
 using CodeFlow.Tests.Workspaces;
+using CodeFlow.Tickets;
 using CodeFlow.Workspaces;
 using Xunit;
 
@@ -68,8 +69,14 @@ public sealed class AiIpcTests : IAsyncLifetime
         var registry = new CommandRegistry();
         _server = new IpcServer(registry, Token);
 
+        var runs = new AiRunRegistry(_server.PublishAsync);
+
         registry
-            .AddAiCommands(new AiRunRegistry(_server.PublishAsync), _db.Handle, _http)
+            .AddAiCommands(runs, _db.Handle, _http)
+            // The analysis is reached through `review_changes`, which is registered with the ticket
+            // commands: it dispatches on whether the work item is part of the question, and
+            // `Tickets/` is the side of that pair that may depend on `Ai/`.
+            .AddTicketCommands(_db.Handle, runs, _http)
             .AddActivityCommands(_db.Handle)
             .Seal();
 
@@ -160,8 +167,11 @@ public sealed class AiIpcTests : IAsyncLifetime
         await using var events = await ConnectAsync("stream");
         await using var client = await ConnectAsync("rpc");
 
-        var text = await CallAsync(client, "analyze_working_changes", $$"""
-            {"projectId":"{{_projectId}}","jobId":"job-1",
+        // Through `review_changes` with the ticket off, which is the combination this command
+        // inherited from `analyze_working_changes` — same body, same refusal rules, same footer.
+        var text = await CallAsync(client, "review_changes", $$"""
+            {"projectId":"{{_projectId}}","jobId":"job-1","scope":"working","withTicket":false,
+             "branch":"main","level":"completo",
              "agentProvider":null,"agentModel":null,"agentPrompt":null}
             """);
 

@@ -216,6 +216,7 @@ internal static class AiOperations
         AiConfig config,
         IReadOnlyList<(string Name, string Content)> contexts,
         string diffText,
+        ReviewScope scope,
         string workingDirectory,
         string promptTemplate,
         string? mcpConfigPath,
@@ -225,11 +226,16 @@ internal static class AiOperations
     {
         if (string.IsNullOrWhiteSpace(diffText))
         {
-            throw new AiRunFailedException(NothingToAnalyzePrefix + "No hay cambios sin commitear para analizar");
+            throw new AiRunFailedException(NothingToAnalyzePrefix + NothingFor(scope));
         }
 
         var payload = new StringBuilder();
         AppendContexts(payload, contexts);
+
+        // The scope is a labelled line rather than something the prompt states, because
+        // `analyze_template` is a user-editable setting: its built-in text says "UNCOMMITTED
+        // changes", and anyone who had edited theirs would be describing the wrong diff.
+        payload.Append("SCOPE: ").Append(ReviewScopes.Describe(scope)).Append("\n\n");
 
         // Already budgeted by `Diff.RenderForPrompt`; see the note in `ReviewPullRequestAsync`.
         payload.Append("DIFF:\n").Append(diffText);
@@ -249,6 +255,122 @@ internal static class AiOperations
         return AiText.StampFooter(
             result.Text, "análisis pre-commit", config.Engine.Label, result.Model ?? config.Model, now,
             result.Usage);
+    }
+
+    /// <summary>
+    /// Cap on the ticket's own prose — its description and the user's notes on it.
+    /// </summary>
+    /// <remarks>
+    /// A budget of its own, because the alternative is the one this replaced: the diff spent 250 000
+    /// characters through <c>PromptDiff</c> and the ticket was concatenated after it with no ceiling
+    /// at all. A work item with a long refinement thread and four screenshots is not unusual, and
+    /// under one shared pool the branch's own contribution is what would have starved.
+    /// <para>
+    /// The acceptance criteria are deliberately <b>not</b> capped by anything: they are what the
+    /// change is being judged against, and truncating them turns "the model did not check AC-7" into
+    /// a finding about the work rather than about the prompt.
+    /// </para>
+    /// </remarks>
+    private const int MaxTicketChars = 40_000;
+
+    /// <summary>Cap on the notes the user keeps beside the ticket.</summary>
+    private const int MaxTicketNotesChars = 20_000;
+
+    /// <summary>
+    /// Reviews a branch's whole contribution against the work item it was written for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A sibling of <see cref="AnalyzeChangesAsync"/> rather than a parameter on it. Two reasons, and
+    /// both are about honesty of shape: that operation has no slot for a ticket, and passing the
+    /// ticket through <paramref name="contexts"/> would render it under <c>PROJECT CONTEXT:</c> —
+    /// a heading that means "standing rules of this project", which a work item is not.
+    /// </para>
+    /// <para>
+    /// The answer carries two contracts at once: the finding blocks <c>ReviewMemory</c> and
+    /// <c>parseAnalysis.ts</c> read (<c>XLANG-001</c>), and the criteria table
+    /// <c>Tickets.TicketVerdict</c> reads (<c>XLANG-016</c>). They are disjoint slices of one text.
+    /// </para>
+    /// </remarks>
+    /// <param name="criteria">
+    /// The acceptance criteria as Markdown, already numbered when the ticket carried a list. Emitted
+    /// uncapped; see <see cref="MaxTicketChars"/>.
+    /// </param>
+    /// <param name="criteriaMode"><c>list</c>, <c>prose</c> or <c>none</c> — <c>WI-007</c>.</param>
+    /// <param name="notes">Whatever the user wrote in the mirror's <c>notes/</c> directory.</param>
+    /// <returns>The run itself, unstamped: the footer is written once the verdict has been parsed.</returns>
+    public static async Task<AiRun> ReviewBranchAgainstTicketAsync(
+        AiRunner runner,
+        AiConfig config,
+        string ticketHeader,
+        string ticketBody,
+        string criteria,
+        string criteriaMode,
+        string notes,
+        string branch,
+        string baseRef,
+        ReviewScope scope,
+        IReadOnlyList<(string Name, string Content)> contexts,
+        string diffText,
+        string codeContext,
+        string workingDirectory,
+        string promptTemplate,
+        string level,
+        string? mcpConfigPath,
+        AiRunContext? run,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(diffText))
+        {
+            throw new AiRunFailedException(NothingToAnalyzePrefix + NothingFor(scope));
+        }
+
+        var payload = new StringBuilder();
+        payload.Append("TICKET: ").Append(ticketHeader).Append("\n\nTICKET DESCRIPTION:\n")
+            .Append(string.IsNullOrWhiteSpace(ticketBody) ? "(sin descripción)" : Cap(ticketBody, MaxTicketChars))
+            .Append("\n\nCRITERIA MODE: ").Append(criteriaMode)
+            .Append("\n\nACCEPTANCE CRITERIA:\n")
+            .Append(string.IsNullOrWhiteSpace(criteria) ? "(el ticket no declara criterios)" : criteria)
+            .Append("\n\n");
+
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            payload.Append("USER NOTES ON THIS TICKET:\n").Append(Cap(notes, MaxTicketNotesChars)).Append("\n\n");
+        }
+
+        AppendContexts(payload, contexts, heading: "PROJECT REVIEW CONTEXT:");
+
+        payload.Append("BRANCH: ").Append(branch);
+        if (scope is ReviewScope.Branch)
+        {
+            payload.Append("\nBASE: ").Append(baseRef);
+        }
+
+        // The caveat rides with the scope: judging only the uncommitted diff against acceptance
+        // criteria hides the evidence for everything already committed, and without this the model
+        // reports met criteria as unmet — systematically, which is worse than any false positive.
+        payload.Append("\nSCOPE: ").Append(ReviewScopes.Describe(scope))
+            .Append(ReviewScopes.CriteriaCaveat(scope))
+            .Append("\n\n");
+
+        // Already budgeted by `Diff.RenderForPrompt`; see the note in `ReviewPullRequestAsync`.
+        payload.Append("DIFF:\n").Append(diffText);
+
+        if (!string.IsNullOrEmpty(codeContext))
+        {
+            payload.Append('\n').Append(codeContext);
+        }
+
+        var invocation = new AiInvocation(
+            Prompt: $"{Fallback(promptTemplate, Prompts.DefaultTicketReviewStandard)}\n\n"
+                + Prompts.ReviewLevelDirective(level, explorable: true),
+            StdinContent: payload.ToString(),
+            Model: config.Model,
+            AllowedTools: config.AllowedTools,
+            Cwd: workingDirectory,
+            McpConfigPath: mcpConfigPath);
+
+        return await runner(config, invocation, run, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Drafts a pull-request description from the diff between two branches.</summary>
@@ -460,6 +582,18 @@ internal static class AiOperations
             payload.Append('\n');
         }
     }
+
+    /// <summary>What "there is nothing to review" means for each scope.</summary>
+    /// <remarks>
+    /// Two different facts, and telling them apart matters: a clean working tree is the ordinary
+    /// state of a repository between edits, while a branch that contributes nothing over its base
+    /// usually means the wrong base was chosen.
+    /// </remarks>
+    private static string NothingFor(ReviewScope scope) => scope switch
+    {
+        ReviewScope.Branch => "Esta rama no aporta ningún cambio sobre su rama base",
+        _ => "No hay cambios sin commitear para analizar",
+    };
 
     /// <summary>A stored template, or the built-in when the user has not set one.</summary>
     /// <remarks>Blank counts as unset, which is how "restore default" works: saving an empty string.</remarks>

@@ -134,6 +134,27 @@ public sealed class BranchContributionTests
     }
 
     [Fact]
+    public void HeadSha_is_the_checked_out_branchs_own_commit()
+    {
+        var (repo, _) = Fork();
+        using var __ = repo;
+
+        repo.Write("a.txt", "on the feature branch\n");
+        repo.Commit("branch commit", "a.txt");
+
+        string expected;
+        using (var handle = repo.Open())
+        {
+            expected = handle.Head.Tip!.Sha;
+        }
+
+        // `ResolveSha(path, "HEAD")` would not answer this: `ResolveBranchCommit` tries
+        // `origin/HEAD` first (GIT-030), which on a clone is the remote's default branch. A review
+        // stamped with that SHA would claim to have judged `main`.
+        Assert.Equal(expected, Diff.HeadSha(repo.Path));
+    }
+
+    [Fact]
     public void An_unknown_base_reports_the_branch_by_name()
     {
         var (repo, _) = Fork();

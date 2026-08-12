@@ -13,7 +13,7 @@ namespace CodeFlow.Tests.Ai;
 public sealed class AiRoutingTests
 {
     /// <summary>
-    /// The eight task keys, spelled out rather than read from the code under test.
+    /// The nine task keys, spelled out rather than read from the code under test.
     /// </summary>
     /// <remarks>
     /// A test that asserted <c>AiRouting.Tasks</c> against itself would pass through any rename.
@@ -21,9 +21,9 @@ public sealed class AiRoutingTests
     /// a rename orphans a user's stored routing silently — this is the check that makes it loud.
     /// </remarks>
     [Fact]
-    public void The_eight_task_keys_are_verbatim() =>
+    public void The_nine_task_keys_are_verbatim() =>
         Assert.Equal(
-            ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline"],
+            ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline", "ticket_review"],
             AiRouting.Tasks);
 
     [Fact]
@@ -145,6 +145,7 @@ public sealed class AiRoutingTests
     [Theory]
     [InlineData("review")]
     [InlineData("analyze")]
+    [InlineData("ticket_review")]
     public void A_judging_task_with_no_setting_falls_back_to_the_recommended_three(string task)
     {
         // An unset list meant no tool flags at all, which handed the decision to whatever the CLI

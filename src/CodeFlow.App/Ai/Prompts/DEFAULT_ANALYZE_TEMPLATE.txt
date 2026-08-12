@@ -43,4 +43,4 @@ Rules:
 - The "📍 Ubicación" line is mandatory for every finding, using the real file path and real line range from the new side of the diff, in PLAIN TEXT with no backticks or Markdown — the value is parsed literally.
 - Be specific and cite real files/lines from the diff — do not generalize.
 - Do not repeat the whole diff and do not summarize changes that are not problematic.
-- If you find no real problem, say so briefly in a couple of lines with ✅ after the CALIDAD line, without inventing findings or using the template above.
+- If you find no real problem, say so after the CALIDAD line with ✅, without inventing findings and without using the block above. **State what you reviewed**: how many files, the main ones by name, and which kinds of problem you looked for and did not find. A bare ✅ is not an answer — it is indistinguishable from a run that failed silently, and it gives the reader nothing to judge the review by. Two or three lines, and still no summary of changes that are not problematic.

@@ -244,8 +244,8 @@ public sealed class ChatTurnTests
         var project = Project(db, repo.Path);
         var engine = ScriptedEngine.Answering("📈 CALIDAD: Fiabilidad=A");
 
-        var text = await AiTurn.AnalyzeWorkingChangesAsync(
-            db.Handle, engine.Runner, project, "job-1", NoAgent, Token);
+        var text = await AiTurn.AnalyzeChangesAsync(
+            db.Handle, engine.Runner, project, "job-1", ReviewScope.Working, string.Empty, NoAgent, Token);
 
         // The diff reaches the engine as the rendered text, not as a structure.
         Assert.Contains("--- a.txt (modified)", engine.Only.StdinContent, StringComparison.Ordinal);
@@ -272,8 +272,8 @@ public sealed class ChatTurnTests
         var project = Project(db, repo.Path);
         var engine = ScriptedEngine.Failing("codex exited with an error (exit status: 1): no such model");
 
-        await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeWorkingChangesAsync(
-            db.Handle, engine.Runner, project, "job-1", NoAgent, Token));
+        await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeChangesAsync(
+            db.Handle, engine.Runner, project, "job-1", ReviewScope.Working, string.Empty, NoAgent, Token));
 
         var job = Assert.Single(db.Use(c => JobHistoryStore.List(c, project)));
 
@@ -293,8 +293,8 @@ public sealed class ChatTurnTests
         var project = Project(db, repo.Path);
         var engine = ScriptedEngine.Failing(AiRunRegistry.CancelledMarker);
 
-        await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeWorkingChangesAsync(
-            db.Handle, engine.Runner, project, "job-1", NoAgent, Token));
+        await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeChangesAsync(
+            db.Handle, engine.Runner, project, "job-1", ReviewScope.Working, string.Empty, NoAgent, Token));
 
         Assert.Empty(db.Use(c => JobHistoryStore.List(c, project)));
     }
@@ -315,8 +315,8 @@ public sealed class ChatTurnTests
         var project = Project(db, repo.Path);
         var engine = ScriptedEngine.Answering("never reached");
 
-        var failure = await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeWorkingChangesAsync(
-            db.Handle, engine.Runner, project, "job-1", NoAgent, Token));
+        var failure = await Assert.ThrowsAsync<AiRunFailedException>(() => AiTurn.AnalyzeChangesAsync(
+            db.Handle, engine.Runner, project, "job-1", ReviewScope.Working, string.Empty, NoAgent, Token));
 
         Assert.Equal(
             AiOperations.NothingToAnalyzePrefix + "No hay cambios sin commitear para analizar",

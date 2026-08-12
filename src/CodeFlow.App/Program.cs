@@ -11,6 +11,7 @@ using CodeFlow.Review;
 using CodeFlow.Security;
 using CodeFlow.Storage;
 using CodeFlow.Terminal;
+using CodeFlow.Tickets;
 using CodeFlow.Update;
 using CodeFlow.Workspaces;
 
@@ -115,10 +116,10 @@ internal static class Program
         // PooledConnectionLifetime bounds how long a pooled connection may be reused, so a DNS
         // change on that host is picked up within 15 minutes instead of never (.NET HttpClient
         // guidelines for a process-lifetime client).
-        using var http = new HttpClient(new SocketsHttpHandler
+        using var http = new HttpClient(new TransientRetryHandler(new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-        })
+        }))
         {
             Timeout = TimeSpan.FromMinutes(5),
         };
@@ -134,6 +135,7 @@ internal static class Program
             .AddAiCommands(aiRuns, database, http)
             .AddActivityCommands(database)
             .AddProviderCommands(database, aiRuns, http)
+            .AddTicketCommands(database, aiRuns, http)
             .AddReviewCommands(database, aiRuns, http, gitNetwork)
             .AddGitCommands(gitNetwork, database)
             .AddFileCommands()

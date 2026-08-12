@@ -22,15 +22,22 @@ namespace CodeFlow.Ai;
 internal static class AiRouting
 {
     /// <summary>
-    /// The eight task keys, verbatim.
+    /// The nine task keys, verbatim.
     /// </summary>
     /// <remarks>
     /// These strings are the settings namespace: they appear inside every key this class builds and
     /// inside the renderer's own copy in <c>src/lib/aiTasks.ts</c>. Renaming one silently orphans a
     /// user's stored routing rather than failing anywhere.
+    /// <para>
+    /// <c>ticket_review</c> is last because it is the newest, and its position is not load-bearing:
+    /// the renderer orders its own table. It earns a key of its own rather than riding on
+    /// <c>review</c> because judging a branch against a work item's acceptance criteria is the one
+    /// task where a user may reasonably want a different — usually larger — model than the one that
+    /// reads a pull request's diff (<c>WI-011</c>).
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlyList<string> Tasks =
-        ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline"];
+        ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline", "ticket_review"];
 
     /// <summary>The provider used when nothing is configured at all.</summary>
     public const string FallbackProvider = EngineCatalog.FallbackProvider;
@@ -51,8 +58,15 @@ internal static class AiRouting
     /// review is neither: it is handed the change it is meant to judge, and every command it runs on
     /// top of that is time and tokens spent re-deriving what it already has. It is a floor rather
     /// than the last word: a review narrows it further by level, through <see cref="Bound"/>.
+    /// <para>
+    /// <c>ticket_review</c> belongs here for a reason the other two do not have: it is asked whether
+    /// a criterion is <em>met</em>, and a criterion is regularly satisfied by code the diff does not
+    /// touch — a helper the change calls, a test that already covered the case. Without the three
+    /// read tools it would have to answer <c>no verificable</c> for those, which is the honest answer
+    /// to a question it was never given the means to ask.
+    /// </para>
     /// </remarks>
-    private static readonly string[] Judging = ["analyze", "review"];
+    private static readonly string[] Judging = ["analyze", "review", "ticket_review"];
 
     /// <summary>
     /// What a judging run may reach for when nobody has said otherwise.

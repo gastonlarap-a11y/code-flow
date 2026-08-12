@@ -229,6 +229,24 @@ public static class Diff
         return ResolveBranchCommit(repo, refname).Sha;
     }
 
+    /// <summary>
+    /// The commit the checked-out branch is on.
+    /// </summary>
+    /// <remarks>
+    /// Not <c>ResolveSha(repoPath, "HEAD")</c>, and the difference is not cosmetic:
+    /// <see cref="ResolveBranchCommit"/> tries <c>origin/{name}</c> first (<c>GIT-030</c>), so on a
+    /// clone that has an <c>origin/HEAD</c> — which is most of them — that call answers with the
+    /// remote's default branch instead of the branch you are standing on. Stamping a review with
+    /// that SHA would record it as having judged <c>main</c>.
+    /// </remarks>
+    public static string HeadSha(string repoPath)
+    {
+        using var repo = RepoStatus.Open(repoPath);
+
+        return repo.Head.Tip?.Sha
+            ?? throw new InvalidOperationException("This repository has no commits yet, so HEAD names nothing.");
+    }
+
     /// <summary>The paths that changed between two refs, so a re-review can tell what it may skip.</summary>
     public static IReadOnlyList<string> ChangedFilesBetween(string repoPath, string from, string to) =>
         BranchDiff(repoPath, from, to)

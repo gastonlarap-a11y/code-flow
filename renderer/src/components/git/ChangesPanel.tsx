@@ -33,6 +33,7 @@ import { parseClaudeError, type ClaudeErrorInfo } from "../../lib/claudeError";
 import { confirmAction } from "../../state/confirmStore";
 import { fileStatusLabelKey } from "../../lib/fileStatus";
 import { buildFileTree, type FileTreeNode } from "../../lib/buildFileTree";
+import { TREE_INDENT } from "../../lib/ui/treeIndent";
 import { useT } from "../../state/languageStore";
 import { ConflictsBanner } from "./ConflictsBanner";
 import { SecretScanModal } from "./SecretScanModal";
@@ -147,7 +148,9 @@ function FileRow({
   return (
     <div
       onClick={onSelect}
-      style={depth ? { paddingLeft: depth * 14 } : undefined}
+      // `TREE_INDENT`, not a literal 14: the step is shared with the two other trees. The row's
+      // own `px-2` stays the base — `treeIndent` adds a gutter this panel already has.
+      style={depth ? { paddingLeft: depth * TREE_INDENT } : undefined}
       className={`group flex items-center gap-2 rounded-md px-2 py-1 text-body cursor-pointer ${
         selected ? "bg-[var(--cf-accent-soft)]" : "hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
       }`}
@@ -223,7 +226,7 @@ function FileTreeSection({
       <div key={node.path}>
         <div
           onClick={() => toggleDir(node.path)}
-          style={{ paddingLeft: depth * 14 }}
+          style={{ paddingLeft: depth * TREE_INDENT }}
           className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-ui text-[var(--cf-text-muted)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
         >
           {collapsed ? <ChevronRight size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
@@ -260,7 +263,10 @@ export function ChangesPanel() {
   const commitSize = useLayoutStore((s) => s.commitSize);
 
   const [selected, setSelected] = useState<{ path: string; staged: boolean } | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "tree">("list");
+  // Persisted, not local: this panel remounts on every view change, and a choice made on purpose
+  // used to last until the next click elsewhere.
+  const viewMode = usePreferencesStore((s) => s.changesViewMode);
+  const setViewMode = usePreferencesStore((s) => s.setChangesViewMode);
   const openAiPanel = useUiStore((s) => s.openAiPanel);
   const openInEditor = useUiStore((s) => s.openInEditor);
   const [message, setMessage] = useState("");

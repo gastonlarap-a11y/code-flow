@@ -3,6 +3,7 @@ import * as api from "../lib/ipc/commands";
 import { pushErrorToast } from "./toastStore";
 import { translate } from "./languageStore";
 import { parseRecent, pushRecent } from "../lib/ui/recentProjects";
+import { nextProjectColor } from "../lib/ui/projectColor";
 import type { NewProject, Project, Workspace } from "../types/domain";
 
 const LAST_WORKSPACE_KEY = "last_active_workspace_id";
@@ -151,7 +152,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   addProject: async (input) => {
-    const project = await api.createProject(input);
+    // The colour is decided here rather than at each of the three places that add a repository,
+    // which all wrote the same indigo literal — so every repository in the sidebar was the same
+    // colour and the per-project picker in Settings had nothing to distinguish. This is also the
+    // only place that knows which colours are already taken. A caller may still name one.
+    const taken = Object.values(get().projectsByWorkspace).flat().map((p) => p.color);
+    const project = await api.createProject({ ...input, color: input.color ?? nextProjectColor(taken) });
     set((s) => ({
       projectsByWorkspace: {
         ...s.projectsByWorkspace,

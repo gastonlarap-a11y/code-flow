@@ -52,7 +52,8 @@ export function RepoNavigator() {
         name,
         local_path: folder,
         remote_url: null,
-        color: "#6366f1",
+        // No colour: `addProject` hands out the least-used one, so two repositories are told apart
+        // without anyone opening Settings.
         icon: "git-branch",
         ado_org: null,
         ado_project: null,

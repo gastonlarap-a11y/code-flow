@@ -67,7 +67,7 @@ export function CloneRepoModal({
         name: effectiveName,
         local_path: dest,
         remote_url: url.trim(),
-        color: "#6366f1",
+        // No colour: `addProject` picks the least-used one.
         icon: "git-branch",
         ado_org: null,
         ado_project: null,

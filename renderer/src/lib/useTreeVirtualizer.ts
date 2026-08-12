@@ -1,6 +1,7 @@
 import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import type { RefObject } from "react";
 import { useDensityStore } from "../state/densityStore";
+import { measuredRowHeight } from "./ui/rowMeasurement";
 
 /**
  * The windowing both trees run on, set up once.
@@ -26,6 +27,17 @@ export function useTreeVirtualizer<Row extends { id: string }>(
     // to guess 24 for rows that measured 23.5px because their height fell out of `py-0.5` around
     // 13px text. `measureElement` still corrects it, but there is nothing left to correct.
     estimateSize: () => rowHeight,
+
+    /**
+     * A row that measures nothing is a row nobody can see, not a row of no height — see
+     * `lib/ui/rowMeasurement.ts` for what that costs when the zeros reach the size cache.
+     *
+     * TanStack documents `useCachedMeasurements` for this, toggled around the hiding. That would
+     * need a tree three levels down to know when an ancestor hides it, and that coordination rots
+     * the first time someone adds a view. A zero is unambiguous on its own and needs nobody's
+     * cooperation.
+     */
+    measureElement: (element, entry) => measuredRowHeight(element, entry, rowHeight),
     // Guarded rather than asserted with `!`. The virtualizer can ask for a key at an index the
     // list no longer reaches, for the render between a collapse shrinking `rows` and the
     // re-measure — the same window `VirtualizedTree` already guards when it renders. Throwing

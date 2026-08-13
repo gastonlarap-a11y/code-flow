@@ -251,7 +251,16 @@ async function checkoutGuarded(
         { id: "stash", label: translate("checkout.stashAndSwitch"), variant: "ghost" },
       ]);
       // A cancel is an answer, not a failure: leave the repo exactly as it was, quietly.
-      if (choice === null) return;
+      //
+      // The repository, yes — but the *view* was cleared thirty lines up in anticipation of a
+      // checkout that is now not happening, and returning straight out would skip the `refreshAll`
+      // below that is the only thing which fills it back in. What that looked like: the branch list
+      // emptied and the breadcrumb showed `-` where the branch name goes, as though declining the
+      // offer had detached the repository. Nothing was wrong with it; nothing had re-read it.
+      if (choice === null) {
+        await get().refreshAll();
+        return;
+      }
 
       await api.stashSave(repoPath, translate("checkout.autoStashMessage", { name: target }), true);
       try {

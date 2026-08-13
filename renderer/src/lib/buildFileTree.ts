@@ -50,8 +50,16 @@ function compact(dir: FileTreeDir): FileTreeDir {
   return { ...folded, children: folded.children.map((c) => (c.type === "dir" ? compact(c) : c)) };
 }
 
-/** Groups a flat list of repo-relative paths into a nested directory tree, the same shape
- * the file explorer and the Changes tab's optional tree view both want. */
+/**
+ * Groups a flat list of repo-relative paths into a nested directory tree.
+ *
+ * The Changes tab's tree view is the only caller, and the only one it can have: the file explorer
+ * builds its tree from a different shape entirely — a `Map` of directory to the listing fetched
+ * when that directory was expanded, flattened by `fileTreeFlatten.ts`. It has "not loaded yet" and
+ * "loaded and empty" as distinct states; this has neither, because it is handed the whole set at
+ * once. The comment that used to sit here claimed both wanted this shape, which sent a reader
+ * looking for a second caller that has never existed.
+ */
 export function buildFileTree(entries: FileStatusEntry[]): FileTreeNode[] {
   const root: FileTreeDir = { type: "dir", name: "", path: "", children: [] };
   for (const entry of entries) {

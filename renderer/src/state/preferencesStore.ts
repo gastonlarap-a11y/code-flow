@@ -14,10 +14,15 @@ interface PreferencesState {
   /** Whether the pre-commit secret scanner runs before each commit. Defaults to on. */
   secretScanEnabled: boolean;
   /**
-   * How the Changes panel groups its files.
+   * How the Changes panel groups its files. Defaults to the directory tree.
    *
    * Held here rather than in the panel, where it was local state: the panel remounts whenever the
    * view changes, so a choice made on purpose lasted until the next click elsewhere.
+   *
+   * VS Code's own SCM view defaults to the flat list; this deliberately does not. The paths in the
+   * repositories this is used on run four and five segments deep, and a flat list of them is a
+   * column of near-identical prefixes — the tree, with single-child folders folded, is the shape
+   * that reads. The toggle is still there for anyone who prefers the list, and it is remembered.
    */
   changesViewMode: ChangesViewMode;
   init: () => Promise<void>;
@@ -34,7 +39,7 @@ function clamp(seconds: number): number {
 export const usePreferencesStore = create<PreferencesState>((set) => ({
   autoFetchSeconds: 0,
   secretScanEnabled: true,
-  changesViewMode: "list",
+  changesViewMode: "tree",
 
   init: async () => {
     const [raw, scanRaw, viewRaw] = await Promise.all([
@@ -46,8 +51,8 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
       autoFetchSeconds: raw ? clamp(Number(raw)) : 0,
       // Unset (first run) defaults to enabled — the gate is opt-out, not opt-in.
       secretScanEnabled: scanRaw === null ? true : scanRaw === "true",
-      // Anything but the one stored word reads as the flat list, which is what a first run gets.
-      changesViewMode: viewRaw === "tree" ? "tree" : "list",
+      // Only an explicit `list` is the flat one. Unset — a first run — gets the tree.
+      changesViewMode: viewRaw === "list" ? "list" : "tree",
     });
   },
 

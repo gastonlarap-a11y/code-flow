@@ -434,6 +434,25 @@ describe("a checkout blocked by uncommitted work", () => {
     expect(toasts).toEqual([]);
   });
 
+  test("cancelling puts the view back, since the checkout cleared it before asking", async () => {
+    // The half the test above missed, and it looked far worse than a failure would have: the branch
+    // list emptied and the breadcrumb showed `-` where the branch goes. Nothing was wrong with the
+    // repository — the store is wiped in anticipation of the checkout, and declining used to return
+    // straight past the refresh that fills it back in.
+    choiceAnswer = null;
+    api.checkoutLocalBranch.mockRejectedValueOnce(
+      new Error("CHECKOUT_CONFLICT: your local changes would be overwritten"),
+    );
+    api.getStatus.mockResolvedValue(statusWith(["src/a.ts"]));
+
+    useRepoStore.setState({ repoPath: "/repo/a" });
+    await useRepoStore.getState().checkoutBranch("feature");
+
+    expect(useRepoStore.getState().status).not.toBeNull();
+    // The branch list is the half that was visible: `listBranches` is what refills it.
+    expect(api.listBranches).toHaveBeenCalled();
+  });
+
   test("any other checkout failure is never offered a stash", async () => {
     choiceAnswer = "carry";
     api.checkoutLocalBranch.mockRejectedValueOnce(new Error("pathspec 'feature' did not match"));

@@ -26,32 +26,12 @@ function sortDir(dir: FileTreeDir) {
 }
 
 /**
- * Folds a directory that holds nothing but one other directory into its child.
- *
- * `src` → `CodeFlow.App` → `Tickets` → one file is four rows to reach one name, and the three
- * folders in front of it carry no choice: there is nothing else in them to pick. Joining them into
- * `src/CodeFlow.App/Tickets` is what VS Code's explorer does, and in a repository whose paths run
- * this deep it is the difference between a usable tree and an indented list.
- *
- * A directory with a file in it is never folded, even alongside one subdirectory — the file is a
- * sibling that would lose its place. Folding also stops at a directory with two children, since
- * that one is a real fork in the path.
- */
-function compact(dir: FileTreeDir): FileTreeDir {
-  let folded = dir;
-
-  while (folded.children.length === 1 && folded.children[0]!.type === "dir") {
-    const only = folded.children[0] as FileTreeDir;
-    // The joined name is what the row shows; the path stays the deepest one, so expansion state,
-    // keys and anything that later resolves a row back to a directory keep working unchanged.
-    folded = { type: "dir", name: `${folded.name}/${only.name}`, path: only.path, children: only.children };
-  }
-
-  return { ...folded, children: folded.children.map((c) => (c.type === "dir" ? compact(c) : c)) };
-}
-
-/**
  * Groups a flat list of repo-relative paths into a nested directory tree.
+ *
+ * **One row per path segment, and no folding.** A pass that joined single-child chains into
+ * `renderer/src` was tried and taken back out: one row carrying a path reads as a path, not as a
+ * folder you can open, which defeats the point of having a tree at all. Every folder gets its own
+ * row and opens into the next one.
  *
  * The Changes tab's tree view is the only caller, and the only one it can have: the file explorer
  * builds its tree from a different shape entirely — a `Map` of directory to the listing fetched
@@ -79,9 +59,5 @@ export function buildFileTree(entries: FileStatusEntry[]): FileTreeNode[] {
     current.children.push({ type: "file", name, entry });
   }
   sortDir(root);
-
-  // Compaction runs after sorting, not before: it changes names (`src` becomes
-  // `src/CodeFlow.App/Tickets`) and sorting on the joined name would order the tree by a string
-  // that only exists once the folding has happened.
-  return root.children.map((node) => (node.type === "dir" ? compact(node) : node));
+  return root.children;
 }

@@ -33,50 +33,45 @@ describe("grouping", () => {
   });
 });
 
-describe("compaction", () => {
-  test("a chain of single-child directories becomes one row", () => {
-    // The case this exists for: four rows to reach one name, and none of the three folders in
-    // front of it offered a choice.
+describe("nesting", () => {
+  test("every path segment is its own row, however deep", () => {
+    // What a folding pass would have collapsed into one `src/CodeFlow.App/Tickets` row. A row
+    // carrying a path reads as a path rather than as a folder you can open, which is the whole
+    // reason that pass was taken back out.
     const tree = buildFileTree([entry("src/CodeFlow.App/Tickets/TicketStore.cs")]);
 
-    expect(shape(tree)).toEqual([{ "src/CodeFlow.App/Tickets": ["TicketStore.cs"] }]);
+    expect(shape(tree)).toEqual([{ src: [{ "CodeFlow.App": [{ Tickets: ["TicketStore.cs"] }] }] }]);
   });
 
-  test("the joined row still points at the deepest directory", () => {
-    // Expansion state and row keys are held by `path`; folding must not move it, or collapsing a
-    // compacted row would refer to a directory that no row represents.
-    const tree = buildFileTree([entry("src/CodeFlow.App/Tickets/TicketStore.cs")]);
+  test("a directory row is keyed by its own path, not the deepest one", () => {
+    // Expansion state and row keys are held by `path`, so each level has to name itself: collapsing
+    // `src` must not be indistinguishable from collapsing what is under it.
+    const tree = buildFileTree([entry("src/deep/one.ts")]);
 
-    expect(dir(tree).path).toBe("src/CodeFlow.App/Tickets");
+    expect(dir(tree).path).toBe("src");
+    expect(dir(dir(tree).children).path).toBe("src/deep");
   });
 
-  test("a fork in the path is where folding stops", () => {
+  test("siblings stay apart", () => {
     const tree = buildFileTree([entry("src/a/one.ts"), entry("src/b/two.ts")]);
 
     expect(shape(tree)).toEqual([{ src: [{ a: ["one.ts"] }, { b: ["two.ts"] }] }]);
   });
 
-  test("a directory holding a file beside a subdirectory is not folded away", () => {
-    // The file is a sibling. Folding here would leave it with nowhere to sit.
+  test("a file sits beside the subdirectory it shares a parent with", () => {
     const tree = buildFileTree([entry("src/index.ts"), entry("src/deep/one.ts")]);
 
     expect(shape(tree)).toEqual([{ src: [{ deep: ["one.ts"] }, "index.ts"] }]);
   });
 
-  test("folding continues below a fork", () => {
-    const tree = buildFileTree([entry("src/a/deep/one.ts"), entry("src/b/two.ts")]);
-
-    expect(shape(tree)).toEqual([{ src: [{ "a/deep": ["one.ts"] }, { b: ["two.ts"] }] }]);
-  });
-
-  test("two files in the same deep directory keep it as one row", () => {
+  test("two files in the same directory share the one row that holds them", () => {
     const tree = buildFileTree([
       entry("src/CodeFlow.App/Tickets/TicketStore.cs"),
       entry("src/CodeFlow.App/Tickets/TicketComment.cs"),
     ]);
 
     expect(shape(tree)).toEqual([
-      { "src/CodeFlow.App/Tickets": ["TicketComment.cs", "TicketStore.cs"] },
+      { src: [{ "CodeFlow.App": [{ Tickets: ["TicketComment.cs", "TicketStore.cs"] }] }] },
     ]);
   });
 });

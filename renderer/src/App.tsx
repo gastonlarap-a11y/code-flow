@@ -44,6 +44,7 @@ import { useSidecarStore } from "./state/sidecarStore";
 import { useGlobalShortcuts } from "./lib/useGlobalShortcuts";
 import { startWatching, stopWatching } from "./lib/ipc/commands";
 import { onRepoFsChanged } from "./lib/ipc/events";
+import { watcherMayRefresh } from "./lib/repoRefreshGate";
 
 // Split out of the entry chunk. Each of the three is the root of a subtree that pulls its own
 // weight in — Monaco for the editor, the whole API client for `ApiView`, twelve settings panels
@@ -295,10 +296,17 @@ export default function App() {
     const unlisten = onRepoFsChanged((e) => {
       const activePath = useWorkspaceStore.getState().activeProject()?.local_path;
       if (e.repo_path !== activePath) return;
+      // Not while the app is the one rewriting the tree: a checkout or a pull fires this on the
+      // leading edge of its own burst, and answering it reads a tree halfway between two branches.
+      // Both operations end with their own refresh over the settled result. `watcherMayRefresh`
+      // carries the reasoning.
+      const repo = useRepoStore.getState();
+      if (!watcherMayRefresh(repo)) return;
+
       // Full refresh, not just status/commits — an external change can just as easily be a
       // branch switch, a stash, or a merge (all of which used to go stale until something
       // else happened to trigger a refresh).
-      void useRepoStore.getState().refreshAll();
+      void repo.refreshAll();
     });
     return () => {
       void unlisten.then((f) => f());

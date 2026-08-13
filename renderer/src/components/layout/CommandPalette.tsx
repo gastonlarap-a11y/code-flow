@@ -45,6 +45,11 @@ interface PaletteItem {
   label: string;
   /** Shown after the label, dimmed — the directory of a file, and nothing else so far. */
   detail?: string;
+  /**
+   * Tints the icon. Set for a workspace and a repository, whose colour the user chose; left unset
+   * for everything else, which keeps the muted token this list is built on.
+   */
+  tint?: string;
   group: PaletteGroup;
   onSelect: () => void;
 }
@@ -177,6 +182,7 @@ export function CommandPalette({
       key: `workspace:${w.id}`,
       icon: Briefcase,
       label: w.name,
+      tint: w.color,
       group: "workspaces",
       onSelect: () => setActiveWorkspace(w.id),
     }));
@@ -185,6 +191,7 @@ export function CommandPalette({
       key: `project:${p.id}`,
       icon: FolderGit2,
       label: p.name,
+      tint: p.color,
       group: "projects",
       onSelect: () => setActiveProject(p.id),
     }));
@@ -360,7 +367,12 @@ export function CommandPalette({
                   onClick={() => choose(item)}
                   className="cf-focusable cf-interactive flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
-                  <Icon size={14} className="shrink-0 text-[var(--cf-text-muted)]" aria-hidden />
+                  <Icon
+                    size={14}
+                    className={item.tint ? "shrink-0" : "shrink-0 text-[var(--cf-text-muted)]"}
+                    style={item.tint ? { color: item.tint } : undefined}
+                    aria-hidden
+                  />
                   <span className="shrink-0 truncate">{item.label}</span>
                   {item.detail && (
                     <span className="truncate text-badge text-[var(--cf-text-muted)]">{item.detail}</span>

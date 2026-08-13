@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Briefcase, Check, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { Briefcase, Check, ChevronDown, ChevronRight, FolderGit2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "../common/Button";
 import { IconButton } from "../common/IconButton";
 import { Tooltip } from "../common/Tooltip";
@@ -185,6 +185,10 @@ export function ProjectsSettings() {
                     <div key={p.id} className="rounded-md border border-[var(--cf-border)] px-2.5 py-1.5">
                       <div className="flex items-center gap-2 text-body">
                         <ColorSwatchPicker value={p.color} onChange={(color) => setProjectColor(p.id, ws.id, color)} />
+                        {/* Beside the picker, so the row shows what the choice does. Without it
+                            the swatch was the only thing carrying the colour, and nothing on this
+                            screen looked like the repository it was configuring. */}
+                        <FolderGit2 size={14} aria-hidden className="shrink-0" style={{ color: p.color }} />
                         <span className="flex-1 truncate font-medium">{p.name}</span>
                         <IconButton
                           label="settings.removeProject"

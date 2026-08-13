@@ -433,6 +433,51 @@ blank/whitespace-only name — rejected by `resolve_new_path`
 **Frontend dependency**: `FileTree.tsx` (drag-and-drop calls `move_path`/`create_dir`/`create_file`), `renderer/src/lib/ipc/commands.ts`.
 **Markers**: `BUG-FILE-a` **closed** — the not-on-disk fallback normalises lexically before the check; same shape as the shell's `isWithinRoot` (F0.6).
 
+### FILE-017 A listing is right or it fails — it never guesses what an entry is
+**Implementation**: `src/CodeFlow.App/Files/FileOps.cs` (`ListDir`) · `src/CodeFlow.App/Files/RepoWalk.cs` (`Walk`) ·
+`renderer/src/components/editor/FileTree.tsx` (the mount and `refresh` failure paths)
+**Behaviour**: both walks classify with `info is DirectoryInfo`, from the `FileSystemInfo` the
+enumeration produced. Neither enumerates names and then asks `Directory.Exists` about them again.
+**Inputs / outputs**: unchanged — `FileEntry.is_dir` carries the same answer whenever there is one.
+**Edge cases**: the second look could be **refused while the enumeration succeeded**, and that is not
+hypothetical. Selecting a repository under a TCC-protected folder — Documents, Desktop — puts macOS's
+permission prompt in front of the user, and the listing already in flight is answered without the
+access it needed. `Directory.Exists` returns `false` when access is denied, so **every folder was
+reported as a file**; the explorer cached that, and granting the permission changed nothing because
+nothing re-listed. The tree showed the repository's root files with none of its folders until the
+side panel was switched away and back, which unmounts `FileTree` and lists again. In `RepoWalk` the
+same answer is silent instead: the walk stops descending and every file beneath disappears from
+search and from "go to file".
+What the classification guarantees is not that it always knows — where the metadata is unreadable
+.NET throws rather than misclassify — but that it never answers **wrongly**. Loud is the point: the
+mount and refresh paths report the failure, refresh keeps the last good listing rather than replacing
+it with what survived, and a test pins the refusal using a directory that is readable but not
+traversable, which is the same split a permission prompt opens up. A symlink to a directory still
+reports as one, pinned by its own test since that is the behaviour the change could have shifted.
+**Frontend dependency**: `FileTree.tsx`, through `is_dir` and through the two failure messages.
+**Markers**: `BUG-FILE-a` — **fixed**.
+
+### FILE-018 A virtualized row that measures zero is hidden, not empty
+**Implementation**: `renderer/src/lib/ui/rowMeasurement.ts` · `renderer/src/lib/useTreeVirtualizer.ts`
+**Behaviour**: `measureElement` returns the row height whenever the observed size is `0`, and the
+observer's `borderBoxSize` otherwise. Both trees run on that hook, so `FileTree` and `CollectionTree`
+are covered by one rule.
+**Inputs / outputs**: sub-pixel sizes are preserved — these rows measure 23.5px, and rounding
+accumulates into a visibly wrong scroll height over a long tree.
+**Edge cases**: `App.tsx:128` keeps a view mounted and hides it with `display: none` when you switch
+tabs, which is deliberate — it is what stops a tab switch from killing editor state. But a hidden
+element measures nothing, so the tree stayed observed while off screen and every row reported `0`.
+Those zeros reached the size cache, and coming back the offsets were computed from them: the list
+collapsed and the rows at the top went missing. Since directories sort first (`FILE-002`), that read
+as **"the folders disappeared"** — the same symptom as `FILE-017`, from an unrelated cause, which is
+why fixing one did not close the other. Switching the *side panel* looked like the cure only because
+`EditorView` unmounts its tree there rather than hiding it, so that path built a fresh virtualizer.
+TanStack documents `useCachedMeasurements` for this, toggled around the hiding; it is not used,
+because it would require a tree three levels down to know when an ancestor hides it and that
+coordination rots the first time someone adds a view. A zero needs nobody's cooperation.
+**Frontend dependency**: none beyond the two trees.
+**Markers**: `BUG-FILE-b` — **fixed**.
+
 ### FILE-002 `list_dir` sorts directories first, then case-insensitively by name
 **Implementation**: `src/CodeFlow.App/Files/FileOps.cs`
 **Behaviour**: Reads one directory level (root or `sub_path`), drops `.git`, builds

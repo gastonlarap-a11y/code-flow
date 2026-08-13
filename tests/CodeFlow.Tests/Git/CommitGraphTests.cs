@@ -93,13 +93,51 @@ public sealed class CommitGraphTests
     }
 
     [Fact]
-    public void Unpushed_is_empty_without_an_upstream()
+    public void Unpushed_is_empty_when_there_is_nowhere_to_push_to()
     {
+        // No remote at all. A count here would nag about an action that does not exist, and this is
+        // the one case the old "no upstream means empty" rule got right (`GIT-021`).
         using var repo = new TempRepo();
         repo.Write("a.txt", "one\n");
         repo.Commit("first", "a.txt");
 
         Assert.Empty(CommitGraph.Unpushed(repo.Path));
+    }
+
+    [Fact]
+    public void A_branch_that_was_never_pushed_reports_everything_the_remote_lacks()
+    {
+        // The bug: a branch created locally has no upstream, so the section reported nothing to push
+        // on a branch where *every* commit is unpushed. It read as an empty panel on eight commits.
+        var origin = new TempRepo();
+        using var _origin = origin;
+        origin.Write("a.txt", "one\n");
+        origin.Commit("shared", "a.txt");
+
+        using var clone = new TempRepo();
+        using (var handle = clone.Open())
+        {
+            handle.Network.Remotes.Add("origin", origin.Path);
+            Commands.Fetch(handle, "origin", [], null, null);
+
+            using var originHandle = origin.Open();
+            var remote = handle.Branches[$"origin/{originHandle.Head.FriendlyName}"];
+
+            // Created off the remote tip and deliberately left with no upstream — exactly what
+            // `git checkout -b` gives you before the first push.
+            Commands.Checkout(handle, handle.CreateBranch("local-only", remote.Tip));
+        }
+
+        // Nothing of its own yet: the shared commit is already on the remote, under another ref.
+        // Excluding every remote ref rather than guessing a base is what keeps that out.
+        Assert.Empty(CommitGraph.Unpushed(clone.Path));
+
+        clone.Write("mine.txt", "not pushed\n");
+        var first = clone.Commit("mine one", "mine.txt");
+        clone.Write("mine.txt", "still not pushed\n");
+        var second = clone.Commit("mine two", "mine.txt");
+
+        Assert.Equal([second.Sha, first.Sha], CommitGraph.Unpushed(clone.Path).Select(c => c.Id));
     }
 
     [Fact]

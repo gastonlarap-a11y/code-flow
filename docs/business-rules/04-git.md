@@ -257,11 +257,22 @@ The outcome is decided by the **index**, not by `StashApplyStatus` alone: LibGit
 **Frontend dependency**: commit graph / history view.
 **Markers**: none
 
-### GIT-021 Unpushed commits are HEAD's branch minus its upstream, empty without one
+### GIT-021 Unpushed commits are what no remote has yet
 **Implementation**: `src/CodeFlow.App/Git/CommitGraph.cs`
-**Behaviour**: `list_unpushed_commits(path)`: if HEAD isn't a branch (detached) → `Ok(vec![])`. Otherwise finds the local branch matching HEAD's shorthand, and if it has no resolvable upstream (or the upstream ref has no target) → `Ok(vec![])`. Otherwise walks `push(head_oid); hide(upstream_oid)` topologically — exactly the commit set `git push` would send.
-**Inputs / outputs**: `repo_path: string` → `IReadOnlyList<CommitInfo>`.
-**Edge cases**: no `limit` parameter — this can return arbitrarily many commits if the branches have diverged a lot.
+**Behaviour**: `list_unpushed_commits(path)` walks from HEAD, excluding the upstream's tip when the
+branch has one and **every remote-tracking branch's tip** when it does not. Detached or unborn HEAD →
+empty. A repository with no remote configured and no upstream → also empty: there is nowhere to push
+to, and a count there nags about an action that does not exist.
+**Inputs / outputs**: `repo_path: string` → `IReadOnlyList<CommitInfo>`, newest first, no `limit` —
+a badly diverged branch returns everything.
+**Edge cases**: this used to answer **empty for any branch with no upstream**, on the reasoning that
+there was nothing to compare against. True, and the worst possible moment to say nothing: a branch
+created locally and never pushed is precisely the one where every commit is unpushed, and the panel
+sat empty on a branch carrying eight of them.
+Excluding *every* remote ref rather than guessing a base — `origin/main`, say — is what keeps the
+answer true rather than merely non-empty. A branch cut from another published branch shares that
+branch's commits and the remote already has them; comparing against one branch would count them
+again. Reachability from any remote ref is exactly "the remote has this".
 **Frontend dependency**: "unpushed commits" indicator/badge.
 **Markers**: none
 

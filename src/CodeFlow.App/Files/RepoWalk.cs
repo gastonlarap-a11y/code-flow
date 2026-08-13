@@ -54,10 +54,15 @@ internal static class RepoWalk
 
         var directory = rel.Length == 0 ? root : Path.Combine(root, rel);
 
-        string[] children;
+        // Infos rather than paths, so "is this a directory" comes from what the enumeration already
+        // read instead of a second, separately-timed `Directory.Exists`. Same reason as
+        // `FileOps.ListDir` (`FILE-007`): under directory churn that race answers "file" for a
+        // folder, and here the cost is silent — the walk stops descending and every file beneath it
+        // vanishes from search and from "go to file", with nothing to say so.
+        FileSystemInfo[] children;
         try
         {
-            children = Directory.GetFileSystemEntries(directory);
+            children = new DirectoryInfo(directory).GetFileSystemInfos();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -68,7 +73,7 @@ internal static class RepoWalk
 
         // Sorted so the palette's order is stable between calls rather than filesystem-dependent.
         // Ordinal, because 1.7.2 sorts by OsString, which compares bytes.
-        Array.Sort(children, (a, b) => string.CompareOrdinal(Path.GetFileName(a), Path.GetFileName(b)));
+        Array.Sort(children, (a, b) => string.CompareOrdinal(a.Name, b.Name));
 
         foreach (var child in children)
         {
@@ -77,14 +82,17 @@ internal static class RepoWalk
                 return;
             }
 
-            var name = Path.GetFileName(child);
+            var name = child.Name;
             if (name == ".git")
             {
                 continue;
             }
 
             var childRel = rel.Length == 0 ? name : $"{rel}/{name}";
-            var isDirectory = Directory.Exists(child);
+            // From the enumeration's own classification, like `FileOps.ListDir` and for the same
+            // reason: anything else needs a `stat`, and a `stat` can be refused while the
+            // enumeration succeeds (`FILE-017`).
+            var isDirectory = child is DirectoryInfo;
 
             // git wants a trailing slash to answer "is this *directory* ignored" for rules like
             // `build/`; without it a directory-only rule does not match and we would descend anyway.

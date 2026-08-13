@@ -53,37 +53,54 @@ public static class CommitGraph
     }
 
     /// <summary>
-    /// Commits on HEAD's branch that its upstream does not have — what <c>git push</c> would send
-    /// (GIT-021).
+    /// Commits on HEAD that no remote has yet — what a <c>git push</c> would send (GIT-021).
     /// </summary>
     /// <remarks>
-    /// Empty rather than an error when HEAD is detached or the branch has no upstream: there is
-    /// nothing to compare against, which is not a failure. No limit either, so a badly diverged
-    /// branch returns everything.
+    /// <para>
+    /// The upstream when there is one, and **every remote-tracking branch** when there is not. A
+    /// branch that has never been pushed has no upstream, and answering "nothing to push" for it is
+    /// the worst possible moment to say so: that is the branch where every commit is unpushed. It
+    /// read as an empty section on a branch carrying eight commits.
+    /// </para>
+    /// <para>
+    /// Excluding every remote ref rather than guessing a base — <c>origin/main</c>, say — is what
+    /// keeps the answer true rather than merely non-empty. A branch cut from another *published*
+    /// branch shares its commits, and the remote already has those; comparing against one branch
+    /// would count them again. Reachability from any remote ref is precisely "the remote has this".
+    /// </para>
+    /// <para>
+    /// Still empty for a detached or unborn HEAD, and still no limit, so a badly diverged branch
+    /// returns everything.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<CommitInfo> Unpushed(string repoPath)
     {
         using var repo = RepoStatus.Open(repoPath);
 
-        if (repo.Info.IsHeadUnborn || repo.Info.IsHeadDetached)
+        if (repo.Info.IsHeadUnborn || repo.Info.IsHeadDetached || repo.Head.Tip is null)
         {
             return [];
         }
 
-        if (repo.Head.TrackedBranch is not { } upstream || upstream.Tip is null)
+        // A repository with no remote at all has nothing to push *to*, and a count there would be
+        // nagging about an action that does not exist. That is the case the old "no upstream means
+        // empty" rule got right, and the only one.
+        if (repo.Head.TrackedBranch is null && !repo.Network.Remotes.Any())
         {
             return [];
         }
 
-        var refMap = RefMap(repo);
-
+        var boundary = repo.Head.TrackedBranch is { Tip: not null } upstream
+            ? [upstream.Tip]
+            : repo.Branches.Where(b => b.IsRemote).Select(b => b.Tip).OfType<Commit>().ToArray();
         var filter = new CommitFilter
         {
             SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Time,
             IncludeReachableFrom = repo.Head.Tip,
-            ExcludeReachableFrom = upstream.Tip,
+            ExcludeReachableFrom = boundary,
         };
 
+        var refMap = RefMap(repo);
         return repo.Commits.QueryBy(filter).Select(c => Describe(c, refMap)).ToList();
     }
 

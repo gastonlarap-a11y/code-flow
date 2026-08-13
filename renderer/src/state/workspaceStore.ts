@@ -3,6 +3,7 @@ import * as api from "../lib/ipc/commands";
 import { pushErrorToast } from "./toastStore";
 import { translate } from "./languageStore";
 import { parseRecent, pushRecent } from "../lib/ui/recentProjects";
+import { isLegacyDefault, nextProjectColor } from "../lib/ui/projectColor";
 import type { NewProject, Project, Workspace } from "../types/domain";
 
 const LAST_WORKSPACE_KEY = "last_active_workspace_id";
@@ -43,6 +44,16 @@ interface WorkspaceState {
    * awaitable, so a caller that needs `activeProject()` to already resolve (opening a PR from a
    * pasted link) can wait for the workspace's projects to load instead of racing them. */
   focusProject: (workspaceId: string, projectId: string) => Promise<void>;
+
+  /**
+   * Gives every repository still on the old hardcoded indigo a colour of its own.
+   *
+   * Repositories added before colours were handed out are all the same `#6366f1`, which is the one
+   * value that cannot have been chosen: the swatch picker offers eight hues and none of them is
+   * that. So this recolours exactly the defaulted ones and never touches a decision, which is what
+   * makes doing it silently acceptable. Naturally idempotent — after the first pass nothing matches.
+   */
+  spreadLegacyColours: (projects: Project[]) => Promise<Project[]>;
 
   activeProject: () => Project | null;
 }
@@ -91,7 +102,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   loadProjects: async (workspaceId) => {
-    const projects = await api.listProjects(workspaceId);
+    const projects = await get().spreadLegacyColours(await api.listProjects(workspaceId));
     set((s) => ({ projectsByWorkspace: { ...s.projectsByWorkspace, [workspaceId]: projects } }));
     if (!get().activeProjectId && projects.length > 0) {
       const lastId = await api.getSetting(LAST_PROJECT_KEY).catch(() => null);
@@ -150,8 +161,40 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
+  spreadLegacyColours: async (projects) => {
+    const stale = projects.filter((p) => isLegacyDefault(p.color));
+    if (stale.length === 0) return projects;
+
+    // Seeded with what the other workspaces already hold, so the spread stays even across all of
+    // them rather than restarting the palette per workspace.
+    const taken = Object.values(get().projectsByWorkspace)
+      .flat()
+      .map((p) => p.color)
+      .filter((color) => !isLegacyDefault(color));
+
+    const assigned = new Map<string, string>();
+    for (const project of stale) {
+      const colour = nextProjectColor([...taken, ...assigned.values()]);
+      assigned.set(project.id, colour);
+      try {
+        await api.updateProjectColor(project.id, colour);
+      } catch {
+        // A colour that could not be saved is not worth failing a workspace load over: the repo
+        // keeps the indigo it had and the next load tries again.
+        assigned.delete(project.id);
+      }
+    }
+
+    return projects.map((p) => (assigned.has(p.id) ? { ...p, color: assigned.get(p.id)! } : p));
+  },
+
   addProject: async (input) => {
-    const project = await api.createProject(input);
+    // The colour is decided here rather than at each of the three places that add a repository,
+    // which all wrote the same indigo literal — so every repository in the sidebar was the same
+    // colour and the per-project picker in Settings had nothing to distinguish. This is also the
+    // only place that knows which colours are already taken. A caller may still name one.
+    const taken = Object.values(get().projectsByWorkspace).flat().map((p) => p.color);
+    const project = await api.createProject({ ...input, color: input.color ?? nextProjectColor(taken) });
     set((s) => ({
       projectsByWorkspace: {
         ...s.projectsByWorkspace,

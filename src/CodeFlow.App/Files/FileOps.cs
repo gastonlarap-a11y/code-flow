@@ -19,6 +19,25 @@ public static class FileOps
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>One directory level, directories first, then case-insensitively by name (<c>FILE-002</c>).</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An entry is a directory when the enumeration says so — <c>info is DirectoryInfo</c> —
+    /// and never because a second syscall was asked about it.</b> The enumeration classifies from
+    /// what <c>readdir</c> already returned; every other way of asking needs a <c>stat</c>, and a
+    /// <c>stat</c> can be refused while the enumeration itself succeeds.
+    /// </para>
+    /// <para>
+    /// That refusal is not hypothetical, and it is what <c>FILE-017</c> exists for. Selecting a
+    /// repository under a TCC-protected folder — Documents, Desktop — puts macOS's permission
+    /// prompt in front of the user, and the listing already in flight is answered without the
+    /// access it needed. Both earlier spellings turned that into silence: <c>Directory.Exists</c>
+    /// returns <see langword="false"/> when access is denied, and <c>Attributes</c> comes back
+    /// unreadable. Every folder was reported as a file, the explorer cached it, and granting the
+    /// permission changed nothing because nothing re-listed. The tree showed the repository's root
+    /// files with none of its folders until the panel was switched away and back, which unmounts
+    /// it and lists again.
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<FileEntry> ListDir(string repoPath, string? subPath)
     {
         var target = subPath is null
@@ -27,19 +46,17 @@ public static class FileOps
 
         var entries = new List<FileEntry>();
 
-        foreach (var path in Directory.EnumerateFileSystemEntries(target))
+        foreach (var info in new DirectoryInfo(target).EnumerateFileSystemInfos())
         {
-            var name = Path.GetFileName(path);
-
             // Skipped by name, independently of gitignore: the explorer never shows git's own
             // storage, and no rule is consulted to decide that.
-            if (name == ".git")
+            if (info.Name == ".git")
             {
                 continue;
             }
 
-            var rel = subPath is null ? name : $"{subPath}/{name}";
-            entries.Add(new FileEntry(name, rel.Replace('\\', '/'), Directory.Exists(path)));
+            var rel = subPath is null ? info.Name : $"{subPath}/{info.Name}";
+            entries.Add(new FileEntry(info.Name, rel.Replace('\\', '/'), info is DirectoryInfo));
         }
 
         // OrderBy is a stable sort, which sort_by is too: two entries the comparison calls equal

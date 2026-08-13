@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { Workspace } from "../types/domain";
+import type { Project, Workspace } from "../types/domain";
 
 // The sidecar is the only thing this store talks to, so mocking `lib/ipc/commands` is what makes
 // it testable at all under `environment: "node"` — the real module reaches `window.codeflow`
@@ -11,6 +11,7 @@ vi.mock("../lib/ipc/commands", () => ({
   listProjects: vi.fn(() => Promise.resolve([])),
   getSetting: vi.fn(() => Promise.resolve(null)),
   setSetting: vi.fn(() => Promise.resolve()),
+  updateProjectColor: vi.fn(() => Promise.resolve()),
 }));
 
 const toasts: string[] = [];
@@ -32,6 +33,24 @@ const workspace = (id: string): Workspace => ({
   ado_project: null,
   git_name: null,
   git_email: null,
+});
+
+const project = (id: string, color: string): Project => ({
+  id,
+  workspace_id: "a",
+  name: `Repo ${id}`,
+  local_path: `/tmp/${id}`,
+  remote_url: null,
+  color,
+  icon: "git-branch",
+  sort_order: 0,
+  created_at: "2026-01-01T00:00:00.0000000+00:00",
+  ado_org: null,
+  ado_project: null,
+  ado_repo_id: null,
+  github_owner: null,
+  github_repo: null,
+  github_host: null,
 });
 
 const initial = useWorkspaceStore.getState();
@@ -126,5 +145,56 @@ describe("loadWorkspaces", () => {
     expect(toasts).toHaveLength(0);
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("a");
     expect(api.listProjects).toHaveBeenCalledWith("a");
+  });
+});
+
+describe("spreadLegacyColours", () => {
+  const LEGACY = "#6366f1";
+
+  // Its own reset: the one above lives inside another `describe` and does not reach here, so
+  // without this the call counts of the previous test leak into these.
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(api.updateProjectColor).mockResolvedValue(undefined);
+    useWorkspaceStore.setState({ ...initial }, true);
+  });
+
+  test("repositories still on the old default each get a colour of their own", async () => {
+    const spread = await useWorkspaceStore
+      .getState()
+      .spreadLegacyColours([project("1", LEGACY), project("2", LEGACY), project("3", LEGACY)]);
+
+    const colours = spread.map((p) => p.color);
+    expect(colours).not.toContain(LEGACY);
+    expect(new Set(colours).size).toBe(3);
+
+    // Written through, not just shown: the next launch has to agree with this one.
+    expect(api.updateProjectColor).toHaveBeenCalledTimes(3);
+  });
+
+  test("a colour somebody chose is never touched", async () => {
+    // The whole safety argument. `#6366f1` is not one of the eight the picker offers, so anything
+    // else came from a person and rewriting it would undo a decision.
+    const chosen = project("1", "#03a447");
+
+    const spread = await useWorkspaceStore.getState().spreadLegacyColours([chosen]);
+
+    expect(spread[0]!.color).toBe("#03a447");
+    expect(api.updateProjectColor).not.toHaveBeenCalled();
+  });
+
+  test("nothing to do costs nothing", async () => {
+    const already = [project("1", "#6260ff")];
+
+    expect(await useWorkspaceStore.getState().spreadLegacyColours(already)).toBe(already);
+  });
+
+  test("a colour that cannot be saved leaves the repository as it was", async () => {
+    // Rather than showing a colour the next launch will not remember.
+    vi.mocked(api.updateProjectColor).mockRejectedValueOnce(new Error("db locked"));
+
+    const spread = await useWorkspaceStore.getState().spreadLegacyColours([project("1", LEGACY)]);
+
+    expect(spread[0]!.color).toBe(LEGACY);
   });
 });

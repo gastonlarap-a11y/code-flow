@@ -602,6 +602,35 @@ WHERE id = ?1` that affects `0` rows (not an error) if the job never got a `job_
 the first place — "best-effort by design … the frontend removes it from memory regardless"
 (`src/CodeFlow.App/Activity/ActivityLogStore.cs`).
 
+### WS-010 A new repository takes the least-used colour, and the colour reaches every icon
+**Implementation**: `renderer/src/lib/ui/projectColor.ts` · `renderer/src/state/workspaceStore.ts`
+(`addProject`) · `components/home/HomeView.tsx` · `components/settings/ProjectsSettings.tsx` ·
+`components/layout/CommandPalette.tsx`
+**Behaviour**: `projects.color` has always existed and always started as the same indigo — the three
+places that add a repository each wrote `#6366f1` by hand — so every repository looked alike and the
+per-project picker in Settings had nothing to distinguish. `addProject` now decides, and it is the
+only place that knows which colours are taken. A caller may still name one.
+**Inputs / outputs**: the renderer's `NewProject.color` is optional; the wire still carries a string.
+`nextProjectColor` returns the **least-used** hue of the eight `ACCENT_OPTIONS`, not the next in
+sequence: a counter keeps advancing past colours freed by a removed repository and starts repeating
+while some go unused. Ties break by palette order, so the same set of existing colours always gives
+the same answer.
+**Edge cases**: repositories added before this are recoloured on load, and **only** those still
+carrying the old literal `#6366f1`. That value is the one thing that cannot have been chosen — the
+picker offers eight hues and its indigo is `#6260ff` — so it identifies a default without guessing,
+which is what makes doing it silently acceptable where a blanket pass would not be. Naturally
+idempotent: after the first load nothing matches. A colour that cannot be saved leaves its
+repository as it was, rather than showing one the next launch will not remember. A colour outside
+the palette is ignored when counting rather than handed back out. Contrast needs no
+new measurement: the picker only ever offered these eight, and `accentStore.test.ts` already holds
+each to 4.5:1 as ink through `lib/ui/contrast.ts` — which is how a repository's colour is used
+everywhere except the sidebar chip, whose fill-plus-white-glyph pairing is left alone.
+**Frontend dependency**: the icon is tinted everywhere a repository appears — the sidebar row,
+Home's recent projects, each Settings project row and the command palette. The sidebar was a filled
+chip with a hardcoded white glyph, which is the fill/foreground pair `renderer-ui.md` warns must
+move together; it is now a tinted glyph like the header pill, so one treatment covers every place.
+**Markers**: none.
+
 ## Rules
 
 | Rule | Title |
@@ -615,6 +644,7 @@ the first place — "best-effort by design … the frontend removes it from memo
 | WS-007 | `safe_skill_path` rejects `..` and empty path segments before any file-editing command touches disk |
 | WS-008 | A workspace may override the global git identity for commits made through the app |
 | WS-009 | A workspace can be renamed, and cannot be renamed to nothing |
+| WS-010 | A new repository takes the least-used colour, and the colour reaches every icon |
 
 (Full rule bodies are inline above, next to the feature they describe, rather than repeated here —
 each carries its own `### WS-0NN` heading in **Workspaces and projects** / **Skills subsystem**.)

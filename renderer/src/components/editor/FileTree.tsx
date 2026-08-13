@@ -260,9 +260,17 @@ export function FileTree({
     setExpanded(new Set());
     setFocus({ path: "", isDir: true });
     setDraft(null);
-    void listDir(repoPath).then((entries) => {
-      if (!cancelled) setChildrenByDir(new Map([["", entries]]));
-    });
+    void listDir(repoPath).then(
+      (entries) => {
+        if (!cancelled) setChildrenByDir(new Map([["", entries]]));
+      },
+      (error: unknown) => {
+        // Reported rather than dropped. A rejected first listing left the tree on its skeleton for
+        // as long as the panel stayed open, with nothing anywhere saying the repository could not
+        // be read — and the most likely reason is a permission the user has not granted yet.
+        if (!cancelled) pushErrorToast(String(error));
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -271,20 +279,27 @@ export function FileTree({
   const toggleDir = useCallback(
     (path: string) => {
       setFocus({ path, isDir: true });
+
+      // The decision is taken here, not inside the updater. A `setState` updater has to be pure —
+      // React may call it more than once for one update — and the `loadDir` that used to live
+      // inside this one listed the directory twice per click under Strict Mode.
+      const isExpanding = !expanded.has(path);
+
       setExpanded((prev) => {
         const next = new Set(prev);
-        if (next.has(path)) next.delete(path);
-        else {
-          next.add(path);
-          // Always re-list on expand: any cached entries render immediately (so collapsing
-          // and reopening a folder doesn't flash empty) and get replaced once the fresh
-          // listing lands, which is what keeps the tree honest without hitting Refresh.
-          void loadDir(path);
-        }
+        if (isExpanding) next.add(path);
+        else next.delete(path);
         return next;
       });
+
+      if (isExpanding) {
+        // Always re-list on expand: any cached entries render immediately (so collapsing
+        // and reopening a folder doesn't flash empty) and get replaced once the fresh
+        // listing lands, which is what keeps the tree honest without hitting Refresh.
+        void loadDir(path);
+      }
     },
-    [loadDir],
+    [expanded, loadDir],
   );
 
   const refresh = useCallback(async () => {
@@ -303,6 +318,16 @@ export function FileTree({
       );
       if (activeRepoRef.current !== repoPath) return;
       const loaded = results.filter((r): r is [string, FileEntry[]] => r !== null);
+
+      // The root is not one of the directories that may quietly drop out. A subdirectory that
+      // disappeared since it was expanded is ordinary and its `null` is meant; the root failing
+      // means the listing itself did, and replacing the cache with what survived would blank the
+      // whole tree with nothing said. Keeping what is on screen is the honest answer.
+      if (!loaded.some(([dir]) => dir === "")) {
+        pushErrorToast(t("editor.refreshFailed"));
+        return;
+      }
+
       setChildrenByDir(new Map(loaded));
       setExpanded(new Set(loaded.map(([dir]) => dir).filter((dir) => dir !== "")));
     } finally {

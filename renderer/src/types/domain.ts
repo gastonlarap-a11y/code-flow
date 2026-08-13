@@ -39,7 +39,8 @@ export interface NewProject {
   name: string;
   local_path: string;
   remote_url: string | null;
-  color: string;
+  /** Omit to let `workspaceStore.addProject` pick the least-used hue — see `lib/ui/projectColor.ts`. */
+  color?: string;
   icon: string;
   ado_org: string | null;
   ado_project: string | null;

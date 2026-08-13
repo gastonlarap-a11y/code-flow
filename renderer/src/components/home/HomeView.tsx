@@ -93,11 +93,10 @@ function RecentProjectsCard({ onAddProject, onClone }: { onAddProject: () => voi
       ) : (
         ordered.map((project) => (
           <HubRow key={project.id} onClick={() => open(project)}>
-            <span
-              aria-hidden
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: project.color }}
-            />
+            {/* The repository's own icon in its own colour, rather than a dot beside a nameless
+                row: the colour is what tells two repositories apart at a glance, and an 8px dot was
+                the smallest place it could have been put. */}
+            <FolderGit2 size={14} aria-hidden className="shrink-0" style={{ color: project.color }} />
             <span className="min-w-0 flex-1 truncate text-ui font-medium text-[var(--cf-text)]">
               {project.name}
             </span>
@@ -254,7 +253,7 @@ export function HomeView() {
         name,
         local_path: folder,
         remote_url: null,
-        color: "#6366f1",
+        // No colour: `addProject` picks the least-used one.
         icon: "git-branch",
         ado_org: null,
         ado_project: null,

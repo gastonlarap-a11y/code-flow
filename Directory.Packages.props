@@ -17,7 +17,7 @@
     <!-- Bundles native SQLite through SQLitePCLRaw. Under NativeAOT it needs an explicit
          SQLitePCL.raw.SetProvider call, which is one of the reasons the port publishes
          self-contained rather than AOT (docs/business-rules/90-ambiguities.md). -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup Label="Storage — transitive security pin">

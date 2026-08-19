@@ -154,7 +154,11 @@ public sealed class Claude : IAiEngine
 
             if (!success || parsed!.IsError)
             {
-                throw new AiRunFailedException(text);
+                // Asked only once the payload itself has said the run failed. `AuthSignals` must
+                // never see the text of a run that worked, or a finding about a 401 turns a
+                // finished review into a login error.
+                throw new AiRunFailedException(
+                    AuthSignals.Matches(text) ? AuthSignals.Marker + text : text);
             }
 
             return new AiRun(text, parsed!.SessionId, ModelUsed(parsed), parsed.Usage);
@@ -170,6 +174,16 @@ public sealed class Claude : IAiEngine
             if (QuotaSignals.Matches(stdout))
             {
                 throw new AiRunFailedException(QuotaSignals.Marker + stdout.Trim());
+            }
+
+            if (AuthSignals.Matches(stderr))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stderr.Trim());
+            }
+
+            if (AuthSignals.Matches(stdout))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stdout.Trim());
             }
 
             // Neither stream carried a usable message — report the exit status rather than an

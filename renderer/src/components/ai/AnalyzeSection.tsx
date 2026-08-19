@@ -311,7 +311,11 @@ export function AnalyzeSection({ project }: { project: Project }) {
           </div>
         )}
 
-        {!loading && error && <AiErrorBanner error={error} />}
+        {/* The two tasks route independently, so which engine to name follows the same flag the
+            run itself was started under. */}
+        {!loading && error && (
+          <AiErrorBanner error={error} task={withTicket ? "ticket_review" : "analyze"} />
+        )}
 
         {/* Nothing has run and nothing is coming — the combinations that do not auto-start. */}
         {!idle && !loading && !cancelled && !error && !parsed && (

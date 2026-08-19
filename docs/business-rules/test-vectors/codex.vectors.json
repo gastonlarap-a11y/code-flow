@@ -55,6 +55,20 @@
         }
       },
       {
+        "id": "an-ordinary-reply-mentioning-401-is-still-a-reply",
+        "input": {
+          "success": true,
+          "statusLabel": "exit status: 0",
+          "stdout": "Finding: the endpoint returns 401 Unauthorized when the token is missing, and authentication failed is never handled by the caller.",
+          "stderr": ""
+        },
+        "expected": {
+          "text": "Finding: the endpoint returns 401 Unauthorized when the token is missing, and authentication failed is never handled by the caller.",
+          "sessionId": null
+        },
+        "notes": "The regression guard for AUTH_EXPIRED::. This text matches the AUTH_SIGNALS dictionary twice over, and must still come back as a reply: a review that discusses authentication is the commonest thing an engine writes, and marking it would throw the finished review away exactly as BUG-AI-b does for quota. What keeps it safe is placement — AuthSignals is consulted only on a failure path — so this case fails the moment that placement is widened."
+      },
+      {
         "id": "surfaces-the-failure-detail",
         "input": {
           "success": false,
@@ -63,8 +77,9 @@
           "stderr": "not logged in — run `codex login`"
         },
         "expected": {
-          "error": "codex exited with an error (exit status: 1): not logged in — run `codex login`"
-        }
+          "error": "AUTH_EXPIRED::not logged in — run `codex login`"
+        },
+        "notes": "A lost ChatGPT login. It used to read as the generic exit-status wrapper; AUTH_EXPIRED:: replaces the wrapper rather than adding to it, because the CLI's own sentence is the reason and the exit status adds nothing to it (XLANG-003)."
       },
       {
         "id": "a-plan-limit-message-gets-the-marker",

@@ -6,18 +6,37 @@ import type { ClaudeErrorInfo } from "../../lib/claudeError";
 import { openExternalUrl } from "../../lib/ipc/commands";
 import { useT } from "../../state/languageStore";
 import { isTimeout, timeoutMinutes } from "../../state/aiRunStore";
+import { useTaskProvider } from "../../state/aiProviderStore";
+import { authCommandFor } from "../../lib/ui/authCommand";
 
 /**
- * How an AI failure is shown. Four cases, because the advice differs: a usage limit lifts on its
- * own (tell them when), an empty balance needs them to top up (link them straight there), a run
- * that hit its deadline never failed at all and its marker would be unreadable on screen, and
- * anything else is a real error worth showing verbatim.
+ * How an AI failure is shown. Five cases, because the advice differs: a usage limit lifts on its
+ * own (tell them when), an empty balance needs them to top up (link them straight there), an engine
+ * that lost its login needs one command typed in a terminal (name it), a run that hit its deadline
+ * never failed at all and its marker would be unreadable on screen, and anything else is a real
+ * error worth showing verbatim.
  */
-export function AiErrorBanner({ error, compact = false }: { error: ClaudeErrorInfo; compact?: boolean }) {
+export function AiErrorBanner({
+  error,
+  compact = false,
+  task,
+}: {
+  error: ClaudeErrorInfo;
+  compact?: boolean;
+  /** Which routed engine produced this, so a lost login can name its own re-login command. Omitted
+   * where the caller does not know, which costs only the command and not the notice. */
+  task?: string;
+}) {
   const t = useT();
   const [copied, copy] = useCopy();
   const size = compact ? "text-ui" : "text-body";
   const subSize = compact ? "text-badge" : "text-ui";
+
+  // Called unconditionally, as a hook must be; the result is only trusted when the caller named a
+  // task, because with none `useTaskProvider` answers with the global provider — a plausible-looking
+  // guess at which engine failed, which is exactly what must not reach a command someone types.
+  const routed = useTaskProvider(task ?? "");
+  const authCommand = task ? authCommandFor(routed) : null;
 
   const timedOut = isTimeout(error.message);
   const minutes = timedOut ? timeoutMinutes(error.message) : null;
@@ -55,6 +74,14 @@ export function AiErrorBanner({ error, compact = false }: { error: ClaudeErrorIn
 
       {timedOut && (
         <p className={`mt-1 ${subSize} text-[var(--cf-text-muted)]`}>{t("ai.runTimedOutHint")}</p>
+      )}
+
+      {/* The headline already carries the CLI's own sentence, which names the provider and is worth
+          reading; this adds the only thing it cannot know — what to type to fix it. */}
+      {error.isAuthExpired && (
+        <p className={`mt-1 ${subSize} text-[var(--cf-text-muted)]`}>
+          {authCommand ? t("ai.authExpiredHint", { command: authCommand }) : t("ai.authExpiredHintPlain")}
+        </p>
       )}
 
       {error.isQuotaExceeded && (

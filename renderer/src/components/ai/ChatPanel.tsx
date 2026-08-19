@@ -111,7 +111,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   if (parsedError) {
     return (
       <div className="mr-auto max-w-[95%] space-y-1">
-        <AiErrorBanner error={parsedError} compact />
+        <AiErrorBanner error={parsedError} compact task="chat" />
         {traceLog}
         <ChatStamp message={message} />
       </div>

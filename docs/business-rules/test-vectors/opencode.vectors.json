@@ -53,9 +53,9 @@
         "stderr": ""
       },
       "expected": {
-        "error": "APIError: Unauthorized: unauthorized: AuthenticateToken authentication failed"
+        "error": "AUTH_EXPIRED::APIError: Unauthorized: unauthorized: AuthenticateToken authentication failed"
       },
-      "notes": "Verbatim event from a live run whose Copilot token had expired — exit code 0, so only the event says the run failed."
+      "notes": "Verbatim event from a live run whose Copilot token had expired — exit code 0, so only the event says the run failed. That is also why the marker is safe here: an error event is a failure whatever the exit status said, so the text is never a reply that worked."
     },
     {
       "id": "a-quota-failure-alongside-events-still-gets-the-marker",
@@ -117,8 +117,9 @@
         "stderr": "auth required: run `opencode auth login`"
       },
       "expected": {
-        "error": "opencode exited with an error (exit status: 1): auth required: run `opencode auth login`"
-      }
+        "error": "AUTH_EXPIRED::auth required: run `opencode auth login`"
+      },
+      "notes": "The second shape a lost opencode login takes — plain stderr on a failed exit, rather than the 401 event above. It used to read as the generic exit-status wrapper; AUTH_EXPIRED:: replaces it (XLANG-003)."
     },
     {
       "id": "a-quota-message-gets-the-marker",

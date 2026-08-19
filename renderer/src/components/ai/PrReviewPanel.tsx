@@ -286,7 +286,7 @@ export function PrReviewSection({ target, pr }: { target: PrTarget; pr: PullRequ
           </div>
         )}
 
-        {!loading && error && <AiErrorBanner error={error} compact />}
+        {!loading && error && <AiErrorBanner error={error} compact task="review" />}
 
         {!loading && !error && reviewText && findings.length === 0 && (
           summary.length > SHORT_SUMMARY_MAX ? (

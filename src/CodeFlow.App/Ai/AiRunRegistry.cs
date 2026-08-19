@@ -38,7 +38,8 @@ public sealed record AiOutputEvent(string RunId, string Stream, string Line);
 /// <param name="publish">Where an <c>ai:output</c> line goes.</param>
 /// <param name="runTimeout">
 /// Overrides <see cref="DefaultRunTimeout"/>. A seam for the tests, which cannot wait ten minutes
-/// to prove that a run that never ends is cut short — production composition passes nothing.
+/// to prove that a silent run is cut short and a talkative one is left alone — production
+/// composition passes nothing.
 /// </param>
 public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = null)
 {
@@ -84,7 +85,8 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
     public const string TimedOutMarker = "RUN_TIMED_OUT::";
 
     /// <summary>
-    /// How long one agent invocation may run before its process tree is killed.
+    /// How long one agent invocation may go without writing anything before its process tree is
+    /// killed.
     /// </summary>
     /// <remarks>
     /// Nothing else bounded a run: the wait was linked only to the caller's token, so a CLI that
@@ -92,8 +94,15 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
     /// as the only way out. A child does not have to be broken to reach this: the CLI runs with the
     /// analysed repository as its working directory, so that repository's own turn hooks run inside
     /// the review, and a hook that type-checks and lints holds the process open for minutes
-    /// (<c>AI-013</c>). Generous on purpose — a large PR review legitimately takes a while, and this
-    /// is a backstop, not a budget.
+    /// (<c>AI-013</c>).
+    /// <para>
+    /// It bounds <em>silence</em> rather than duration, and that distinction is the whole of it. A
+    /// review is a single subprocess from spawn to exit, so as a total budget this killed reviews
+    /// that were still working — an Opus review at the ultra level died here mid-answer, observed
+    /// 2026-08-18. A child doing the job says so continuously; a hung one says nothing. The pumps
+    /// push the deadline back out on every read, so only a run that has already gone quiet pays for
+    /// the value being generous.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan DefaultRunTimeout = TimeSpan.FromMinutes(10);
 
@@ -173,6 +182,25 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
         using var timeout = new CancellationTokenSource(_runTimeout);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
 
+        // What `timeout` bounds is silence, not the run: the pumps push it back out on every read,
+        // so a review that keeps working lives as long as it needs to and only a child that has
+        // gone quiet is killed (`AI-013`). Both pumps call this concurrently, which `CancelAfter`
+        // allows, and on an already-cancelled source it does nothing — so it can never revive a run
+        // the deadline or the stop button has already ended.
+        void KeepAlive()
+        {
+            try
+            {
+                timeout.CancelAfter(_runTimeout);
+            }
+            catch (ObjectDisposedException)
+            {
+                // `QuiesceAsync` waits only `PumpDrainGrace` for the readers before this method
+                // returns and disposes the source, and says so: whatever is still reading finishes
+                // on its own. That reader landing here is that promise being kept, not a fault.
+            }
+        }
+
         // Registered before the spawn so a stop arriving while the process is still starting is
         // still observed.
         if (run is not null)
@@ -192,8 +220,8 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
         // exits would deadlock any CLI whose output outgrows the OS pipe buffer, and there would
         // be nothing to stream in the meantime. Declared out here so the cancellation path can
         // wait on them too — they read from streams the `using` above is about to close.
-        var stdout = PumpAsync(process.StandardOutput, run, "stdout", lifetime.Token);
-        var stderr = PumpAsync(process.StandardError, run, "stderr", lifetime.Token);
+        var stdout = PumpAsync(process.StandardOutput, run, "stdout", KeepAlive, lifetime.Token);
+        var stderr = PumpAsync(process.StandardError, run, "stderr", KeepAlive, lifetime.Token);
 
         try
         {
@@ -247,7 +275,11 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
     /// CLI never wrote.
     /// </remarks>
     private async Task<string> PumpAsync(
-        StreamReader reader, AiRunContext? run, string stream, CancellationToken cancellationToken)
+        StreamReader reader,
+        AiRunContext? run,
+        string stream,
+        Action keepAlive,
+        CancellationToken cancellationToken)
     {
         var captured = new StringBuilder();
         var pending = new StringBuilder();
@@ -260,6 +292,11 @@ public sealed class AiRunRegistry(PublishEvent publish, TimeSpan? runTimeout = n
             {
                 break;
             }
+
+            // Anything the child wrote proves it is still working, so the silence deadline starts
+            // over. Anchored to the read rather than to `EmitAsync`, which drops blank lines and
+            // never runs for an untracked run — a CLI printing only whitespace is not a dead one.
+            keepAlive();
 
             captured.Append(buffer, 0, read);
 

@@ -160,6 +160,27 @@ public sealed class AgentStreamingTests
     }
 
     [Fact]
+    public async Task A_run_that_keeps_printing_outlives_its_deadline_many_times_over()
+    {
+        // What the deadline bounds is silence, not duration (`AI-013`). This run lives three times
+        // its own deadline and is never cut, because it never stops saying so. As a total budget
+        // the same ten minutes killed reviews that were doing exactly what they were asked — an
+        // Opus review at the ultra level died mid-answer, observed 2026-08-18 — while catching a
+        // genuinely hung child no faster. The tick is a fifth of the deadline, so a loaded machine
+        // cannot turn the margin into a flake.
+        var (publish, published) = Recorder.Create();
+        var registry = new AiRunRegistry(publish, TimeSpan.FromMilliseconds(500));
+
+        var outcome = await registry.RunAsync(
+            new AiRunContext("run-chatty"),
+            Script("i=0; while [ $i -lt 15 ]; do printf 'tick\\n'; sleep 0.1; i=$((i+1)); done"),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(outcome.Success);
+        Assert.Equal(15, published.Lines("run-chatty", "stdout").Count);
+    }
+
+    [Fact]
     public async Task A_stop_still_reads_as_a_stop_when_a_deadline_is_also_set()
     {
         // Both sources feed one linked token, so the catch has to ask which of the two fired.

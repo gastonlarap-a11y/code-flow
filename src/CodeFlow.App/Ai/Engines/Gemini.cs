@@ -178,6 +178,20 @@ public sealed class Gemini : IAiEngine
                 throw new AiRunFailedException(QuotaSignals.Marker + stdout.Trim());
             }
 
+            // After quota and inside `!success`, never over a reply that worked: a review is full
+            // of the words a lost login uses, and only a failed run may be read for them. agy has
+            // no captured logged-out payload yet, so this rides on the wording it shares with the
+            // other three rather than on anything measured.
+            if (AuthSignals.Matches(stderr))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stderr.Trim());
+            }
+
+            if (AuthSignals.Matches(stdout))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stdout.Trim());
+            }
+
             var detail = FirstNonEmpty(stderr, stdout) ?? "sin salida en stdout ni stderr";
             throw new AiRunFailedException($"agy exited with an error ({statusLabel}): {detail}");
         }

@@ -26,9 +26,9 @@
         "stderr": ""
       },
       "expected": {
-        "error": "Failed to authenticate: OAuth session expired and could not be refreshed"
+        "error": "AUTH_EXPIRED::Failed to authenticate: OAuth session expired and could not be refreshed"
       },
-      "notes": "Real payload from a failing 'claude -p ... --output-format json' run: exit 1, empty stderr, reason only on stdout. The whole multi-line buffer fails the line-scan (no single line starts with '{') and falls back to parsing stdout as one JSON document."
+      "notes": "Real payload from a failing 'claude -p ... --output-format json' run: exit 1, empty stderr, reason only on stdout. The whole multi-line buffer fails the line-scan (no single line starts with '{') and falls back to parsing stdout as one JSON document. Carries AUTH_EXPIRED:: because the payload said is_error — the marker is read only on a failure path, never over a reply that worked (XLANG-003)."
     },
     {
       "id": "reads-the-verdict-out-of-a-streamed-run",

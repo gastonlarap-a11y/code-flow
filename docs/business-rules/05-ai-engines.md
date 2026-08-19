@@ -157,8 +157,11 @@ hatch implies. When unset (or blank — a stored empty string counts as unset), 
 | `openai` (and any OpenAI-compatible endpoint) | `https://api.openai.com/v1` (endpoint, not a binary) | HTTP `POST {base}/chat/completions` — `Transport.OpenAiCompatible`, no argv | n/a (HTTP body: `messages` array) | `choices[0].message.content` | HTTP status: 401/403 → key rejected, 429 → quota (`quota_signal` matches the wording), 404 → unknown model, else raw | None — every request stands alone | HTTP `GET {base}/models`, filtered by `is_chat_model`, alphabetised | no |
 | `ollama`/`local` | `http://localhost:11434` (endpoint) | HTTP `POST {base}/api/chat` — `Transport.Ollama`, no argv | n/a (HTTP body: `messages` array) | `message.content` | HTTP status: 404 → model not pulled, else raw `Ollama devolvió {status}: {detail}`; no quota concept (no billing) | No server-side session; a synthetic `ollama-<uuid>` id is minted (or the caller's own reused) purely so turns group in the activity log | HTTP `GET {base}/api/tags` | no |
 
-All six share `QUOTA_MARKER`/`quota_signal` (see below) and, for the four subprocess engines,
-the exact same non-zero-exit fallback shape: `"{binary} exited with an error ({status_label}): {detail}"`,
+All six share `QUOTA_MARKER`/`quota_signal` (see below); the four subprocess engines additionally
+share `AUTH_MARKER`/`auth_signal` (`AI-056`), which is tested after quota and **only on a failure
+path**, so a lost login is recognised without a review that discusses one being mistaken for it.
+Those four also share the exact same non-zero-exit fallback shape:
+`"{binary} exited with an error ({status_label}): {detail}"`,
 where `detail` is the first non-empty of stderr/stdout, or a fixed "no output" sentinel
 (`"sin salida en stdout ni stderr"`, Spanish, verbatim) when both streams are empty.
 
@@ -1049,6 +1052,32 @@ not fixed.
 **Frontend dependency**: the frontend renders a dedicated "out of quota" notice whenever an error string starts with `QUOTA_MARKER`, instead of a generic error banner.
 **Markers**: `VERBATIM` (the marker string and the 11 dictionary phrases); `BUG-AI-b`
 
+### AI-056 AUTH_MARKER / auth_signal
+**Implementation**: `src/CodeFlow.App/Ai/AuthSignals.cs`
+**Behaviour**: `AUTH_MARKER = "AUTH_EXPIRED::"`. `auth_signal(text)` lower-cases and
+substring-matches a 7-phrase dictionary (`failed to authenticate`, `oauth session expired`,
+`session expired`, `not logged in`, `auth required`, `authentication failed`, `unauthorized`) shared
+by the four subprocess engines. Each of the four CLIs authenticates outside CodeFlow — Claude's own
+OAuth session, a ChatGPT login, opencode's configured provider, a Google account — so none of those
+credentials is the app's to renew, and all it can do is recognise the sentence the CLI printed. Every
+phrase is taken from a payload captured off a real failing run; agy alone has none yet, and rides on
+whatever wording it shares with the other three.
+**Inputs / outputs**: `string -> bool`. The tagged message is `AUTH_MARKER + detail`, replacing the
+`"{binary} exited with an error …"` wrapper rather than nesting inside it: the CLI's sentence is the
+reason and the exit status adds nothing to it.
+**Edge cases**: **Consulted only on a failure path** — `!success`, or an explicit error event — and
+never over the text of a run that succeeded. That is the whole difference from `AI-014`, and it is
+deliberate: the dictionary cannot tell a lost login from a review discussing one, and "returns 401
+Unauthorized" is an ordinary finding, so the same placement quota uses would discard correct reviews
+routinely, the way `BUG-AI-b` already does for quota. There is no `mark_auth`: the two HTTP engines
+hold a credential the app itself manages and have their own 401/403 path. The guard for the
+placement is an engine vector, `an-ordinary-reply-mentioning-401-is-still-a-reply` in
+`codex.vectors.json`, which fails the moment the check is widened.
+**Frontend dependency**: `claudeError.ts` strips the marker and sets `isAuthExpired`; `AiErrorBanner`
+keeps the CLI's own sentence as the headline and adds the re-login command underneath, resolved from
+the provider the task is routed to (`lib/ui/authCommand.ts`).
+**Markers**: `VERBATIM` (the marker string and the 7 dictionary phrases); `XLANG-003`
+
 ### AI-015 Model listing precedence
 **Implementation**: `src/CodeFlow.App/Ai/AiOperations.cs`
 **Behaviour**: HTTP engines list over their own API (bypassing everything below). For subprocess engines: `cached_models()` (a catalogue the CLI already wrote to disk) is checked before `list_models_args()` (spawning the CLI's own listing subcommand); an engine with neither returns an empty `Vec` with no process spawned.
@@ -1555,4 +1584,4 @@ throwaway temp directory, or network, so none is `behavioural`.
 | `DIVERGENCE-AI-b` | agy/Gemini session resume is a fixed sentinel + global `--continue`, not a per-conversation id — the CLI gives a headless caller no way to target a specific conversation. Two chats on the same project can silently cross contexts; accepted upstream limitation (`google-antigravity/antigravity-cli#7`), not a bug to fix in this port. | `src/CodeFlow.App/Ai/Engines/Gemini.cs`, AI-036 |
 | ~~`BUG-AI-a`~~ **CLOSED** | Temp payload files were written per invocation and never deleted: opencode's `--file` attachment (`codeflow-opencode-<uuid>.txt`) and agy's large-brief directory (`codeflow-agy-<uuid>/brief.txt`) — unbounded temp growth over the life of the app. Closed by `src/CodeFlow.App/Ai/EngineScratch.cs`, the one owner of the naming contract: creation, recognition from the built command's own arguments, deletion in the runner's `finally` on every exit path (reply, CLI error, launch failure, cancellation), and an age-gated startup sweep (> 1 h, so a concurrent instance's live invocation is never claimed). See `91-known-bugs.md`. | AI-034, AI-038, `src/CodeFlow.App/Ai/EngineScratch.cs` |
 | `AMBIGUOUS-AI-a` | opencode's `fix_tools()` tool-name list (`read/edit/write/bash/grep/glob`) is marked `TODO(verify)` in source and has no observable runtime effect (opencode has no allow-list flag to pass them to). Whether these are opencode's true internal tool names is unconfirmed by the source itself. | `src/CodeFlow.App/Ai/Engines/OpenCode.cs`, AI-041 |
-| `VERBATIM` | The nine prompt constants; `QUOTA_MARKER` and the 11-phrase `QUOTA_SIGNALS` dictionary; the three review-level directive blocks; opencode's stale-session Spanish message. | Prompt constants section, AI-014, AI-022, AI-040 |
+| `VERBATIM` | The nine prompt constants; `QUOTA_MARKER` and the 11-phrase `QUOTA_SIGNALS` dictionary; `AUTH_MARKER` and the 7-phrase `AUTH_SIGNALS` dictionary; the three review-level directive blocks; opencode's stale-session Spanish message. | Prompt constants section, AI-014, AI-056, AI-022, AI-040 |

@@ -149,5 +149,71 @@
       }
     ],
     "notes": "The full QUOTA_SIGNALS dictionary, lower-cased substring match: usage limit, rate limit, quota exceeded, resets at, try again in, limit reached, insufficient balance, insufficient credit, out of credit, payment required, billing."
+  },
+  {
+    "$schema": "codeflow-fixture-v1",
+    "sourceFile": "src/CodeFlow.App/Ai/AuthSignals.cs",
+    "extractedFrom": [
+      "A_lost_login_is_recognised_as_an_auth_signal"
+    ],
+    "kind": "vector",
+    "unit": "auth_signal",
+    "cases": [
+      {
+        "id": "claude-expired-oauth-session-is-an-auth-signal",
+        "input": {
+          "text": "Failed to authenticate: OAuth session expired and could not be refreshed"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "codex-not-logged-in-is-an-auth-signal",
+        "input": {
+          "text": "not logged in — run `codex login`"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "opencode-401-event-is-an-auth-signal",
+        "input": {
+          "text": "APIError: Unauthorized: unauthorized: AuthenticateToken authentication failed"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "opencode-auth-required-is-an-auth-signal",
+        "input": {
+          "text": "auth required: run `opencode auth login`"
+        },
+        "expected": {
+          "result": true
+        }
+      },
+      {
+        "id": "unknown-flag-error-is-not-an-auth-signal",
+        "input": {
+          "text": "error: unknown flag --nope"
+        },
+        "expected": {
+          "result": false
+        }
+      },
+      {
+        "id": "a-review-finding-about-a-401-does-match-the-dictionary",
+        "input": {
+          "text": "The endpoint returns 401 Unauthorized when the token is missing, and the caller never handles it."
+        },
+        "expected": {
+          "result": true
+        }
+      }
+    ],
+    "notes": "The AUTH_SIGNALS dictionary, lower-cased substring match: failed to authenticate, oauth session expired, session expired, not logged in, auth required, authentication failed, unauthorized. The last case is the point of the class and is deliberately `true`: the dictionary cannot tell a lost login from a review discussing one, so nothing protects that review except *where* Matches is called — only on a failure path, never over a reply that worked. See `an-ordinary-reply-mentioning-401-is-still-a-reply` in codex.vectors.json, which is the case that would break if that placement were ever widened."
   }
 ]

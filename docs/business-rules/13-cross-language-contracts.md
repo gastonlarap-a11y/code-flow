@@ -103,14 +103,26 @@ changing the trailing space — turns a recoverable conflict into an unhandled f
 
 ### XLANG-003 The AI run markers
 **Implementation**: `src/CodeFlow.App/Ai/AiOperations.cs` · `src/CodeFlow.App/Ai/AiRunRegistry.cs` · `renderer/src/lib/claudeError.ts` · `renderer/src/state/aiRunStore.ts`
-**Behaviour**: Three sentinel prefixes classify an error string as it crosses the IPC boundary,
+**Behaviour**: Four sentinel prefixes classify an error string as it crosses the IPC boundary,
 so the frontend can render a dedicated notice rather than a red failure banner.
 
 `
 QUOTA_EXCEEDED::     // `src/CodeFlow.App/Ai/AiOperations.cs`          ↔ src/lib/claudeError.ts:1
+AUTH_EXPIRED::       // `src/CodeFlow.App/Ai/AuthSignals.cs`       ↔ src/lib/claudeError.ts
 RUN_CANCELLED::      // `src/CodeFlow.App/Ai/AiRunRegistry.cs`     ↔ src/state/aiRunStore.ts
 RUN_TIMED_OUT::      // `src/CodeFlow.App/Ai/AiRunRegistry.cs`     ↔ src/state/aiRunStore.ts
 `
+
+`AUTH_EXPIRED::` is one of the four CLI engines having lost its own login — none of those credentials
+belongs to CodeFlow, so all it can do is recognise the sentence the CLI printed and let the frontend
+name the command that fixes it (`claude auth login`, `codex login`, `opencode auth login`; agy has no
+such command and gets the wording that names none). Tagged inside each engine's `interpret`, **after**
+the quota test and **only on a failure path** — never over the text of a run that succeeded. That
+narrowness is the feature: the dictionary cannot tell a lost login from a review discussing one, and
+a review saying "returns 401 Unauthorized" is ordinary, so placement rather than wording is what
+keeps a finished review from being thrown away the way `BUG-AI-b` throws one away for quota.
+`claudeError.ts` strips the marker and sets `isAuthExpired`; the banner keeps showing the CLI's own
+sentence and adds the command underneath.
 
 `RUN_TIMED_OUT::` is the run's own deadline expiring (`AiRunRegistry.DefaultRunTimeout`, ten
 minutes), and is kept apart from `RUN_CANCELLED::` because the two say opposite things to the

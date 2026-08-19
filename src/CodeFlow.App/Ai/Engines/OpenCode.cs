@@ -131,8 +131,12 @@ public sealed class OpenCode : IAiEngine
             // zero-exit run — so it is judged before the status, as in the Claude engine.
             if (parsed.Error is { } eventError)
             {
+                // An error event is a failure however the process exited, which makes it one of the
+                // places auth may be read: opencode's expired-token 401 arrives here on exit 0.
                 throw new AiRunFailedException(
-                    QuotaSignals.Matches(eventError) ? QuotaSignals.Marker + eventError : eventError);
+                    QuotaSignals.Matches(eventError) ? QuotaSignals.Marker + eventError
+                    : AuthSignals.Matches(eventError) ? AuthSignals.Marker + eventError
+                    : eventError);
             }
 
             var replyText = parsed.Text.Trim();
@@ -142,6 +146,11 @@ public sealed class OpenCode : IAiEngine
                 if (QuotaSignals.Matches(detail))
                 {
                     throw new AiRunFailedException(QuotaSignals.Marker + detail);
+                }
+
+                if (AuthSignals.Matches(detail))
+                {
+                    throw new AiRunFailedException(AuthSignals.Marker + detail);
                 }
 
                 throw new AiRunFailedException(StaleSessionHint(detail)
@@ -171,6 +180,18 @@ public sealed class OpenCode : IAiEngine
             if (QuotaSignals.Matches(stdout))
             {
                 throw new AiRunFailedException(QuotaSignals.Marker + stdout.Trim());
+            }
+
+            // After quota and inside `!success`, never over a reply that worked: a review is full
+            // of the words a lost login uses, and only a failed run may be read for them.
+            if (AuthSignals.Matches(stderr))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stderr.Trim());
+            }
+
+            if (AuthSignals.Matches(stdout))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stdout.Trim());
             }
 
             var detail = FirstNonEmpty(stderr, stdout) ?? "sin salida en stdout ni stderr";

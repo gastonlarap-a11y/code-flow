@@ -131,3 +131,74 @@ describe("the action link", () => {
     );
   });
 });
+
+/**
+ * The other half of `XLANG-003`: `AUTH_EXPIRED::`, the engine's own login being gone.
+ *
+ * The four payloads below are the ones captured off real failing runs and pinned in the sidecar's
+ * fixtures, so both sides are checked against the same sentences rather than against invented ones.
+ */
+
+const AUTH = "AUTH_EXPIRED::";
+
+describe("a lost engine login", () => {
+  for (const [engine, payload] of [
+    ["claude", "Failed to authenticate: OAuth session expired and could not be refreshed"],
+    ["codex", "not logged in — run `codex login`"],
+    ["opencode, as a 401 event", "APIError: Unauthorized: unauthorized: AuthenticateToken authentication failed"],
+    ["opencode, on a failed exit", "auth required: run `opencode auth login`"],
+  ] as const) {
+    test(`is recognised from ${engine}`, () => {
+      const info = parseClaudeError(`${AUTH}${payload}`);
+
+      expect(info.isAuthExpired).toBe(true);
+      expect(info.message).toBe(payload);
+    });
+  }
+
+  // The banner keeps showing the CLI's own sentence for this case, so the marker must not survive
+  // into it — the user would be reading a wire format.
+  test("keeps only what follows the marker, trimmed", () => {
+    expect(parseClaudeError(`${AUTH}   Session expired.  `).message).toBe("Session expired.");
+  });
+
+  // A lost login is not a quota problem, and the banner picks its hint on these two booleans alone.
+  test("is not a quota refusal", () => {
+    const info = parseClaudeError(`${AUTH}Failed to authenticate`);
+
+    expect(info.isQuotaExceeded).toBe(false);
+    expect(info.kind).toBe(null);
+  });
+
+  // Nothing about a login refills on a timer, and the fix is a command rather than a page.
+  test("offers neither a reset hint nor a link", () => {
+    const info = parseClaudeError(`${AUTH}Session expired 5 minutes ago, see https://example.com/x`);
+
+    expect(info.resetHint).toBe(null);
+    expect(info.actionUrl).toBe(null);
+  });
+});
+
+describe("what is not a lost login", () => {
+  // The sidecar's dictionary does match this wording — a review discussing a 401 is indistinguishable
+  // from a real auth failure by text alone. What keeps it out is that the sidecar only consults that
+  // dictionary on a failure path, so an untagged message must stay untagged here too.
+  test("a review finding about a 401 is left alone", () => {
+    const finding = "The endpoint returns 401 Unauthorized when the token is missing.";
+
+    expect(parseClaudeError(finding).isAuthExpired).toBe(false);
+    expect(parseClaudeError(finding).message).toBe(finding);
+  });
+
+  test("an ordinary error is left alone", () => {
+    expect(parseClaudeError("error: unknown flag --nope").isAuthExpired).toBe(false);
+  });
+
+  // Quota is tested first on both sides, so a message carrying both markers is a quota one.
+  test("a message tagged as quota stays a quota one", () => {
+    const info = parseClaudeError(`${MARKER} ${AUTH}Insufficient balance`);
+
+    expect(info.isQuotaExceeded).toBe(true);
+    expect(info.isAuthExpired).toBe(false);
+  });
+});

@@ -209,6 +209,30 @@ public sealed class EngineVectorTests
             QuotaSignals.Matches(testCase.Input.GetProperty("text").GetString()!));
     }
 
+    public static TheoryData<string, string> AuthCases() =>
+        CasesFor("auth_signal", ["ai.vectors.json"]);
+
+    /// <summary>
+    /// The dictionary alone, which is knowingly too broad.
+    /// </summary>
+    /// <remarks>
+    /// One of its cases asserts <see langword="true"/> for an ordinary review finding about a 401,
+    /// because that is the truth about the dictionary and pretending otherwise would hide what keeps
+    /// the feature safe: <see cref="AuthSignals"/> is only ever consulted on a failure path. The
+    /// case that proves <em>that</em> is an engine vector, not this one —
+    /// <c>an-ordinary-reply-mentioning-401-is-still-a-reply</c> in <c>codex.vectors.json</c>.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AuthCases))]
+    public void A_lost_login_is_recognised_as_an_auth_signal(string file, string caseId)
+    {
+        var testCase = Find(file, caseId);
+
+        Assert.Equal(
+            testCase.Expected.GetProperty("result").GetBoolean(),
+            AuthSignals.Matches(testCase.Input.GetProperty("text").GetString()!));
+    }
+
     // -----------------------------------------------------------------------
 
     /// <summary>Every case of one unit, across the named fixture files.</summary>

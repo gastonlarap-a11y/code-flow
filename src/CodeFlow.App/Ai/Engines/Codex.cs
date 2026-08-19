@@ -134,6 +134,18 @@ public sealed class Codex : IAiEngine
                 throw new AiRunFailedException(QuotaSignals.Marker + stdout.Trim());
             }
 
+            // After quota and inside `!success`, never over a reply that worked: a review is full
+            // of the words a lost login uses, and only a failed run may be read for them.
+            if (AuthSignals.Matches(stderr))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stderr.Trim());
+            }
+
+            if (AuthSignals.Matches(stdout))
+            {
+                throw new AiRunFailedException(AuthSignals.Marker + stdout.Trim());
+            }
+
             var detail = FirstNonEmpty(stderr, stdout) ?? "sin salida en stdout ni stderr";
             throw new AiRunFailedException($"codex exited with an error ({statusLabel}): {detail}");
         }

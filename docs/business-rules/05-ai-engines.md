@@ -1006,13 +1006,25 @@ lookup and the signal, which disposes the source underneath it.
 **Frontend dependency**: `cancel_ai_run` command.
 **Markers**: none
 
-**Every run has a deadline** (`AiRunRegistry.DefaultRunTimeout`, ten minutes). Nothing bounded a run
-before: the wait was linked only to the caller's token, so a CLI that never exited left the panel
-spinning with the stop button — inside a collapsed log — as the only way out. Expiry kills the
-process tree exactly as a stop does, but reports `RUN_TIMED_OUT::` rather than `RUN_CANCELLED::`
-(`XLANG-003`), because the user pressed nothing. The two sources are separate and linked into one
-token so the handler can tell which fired; a shutdown racing the deadline still reads as a
-cancellation. The constructor takes an override purely as a test seam.
+**Every run has a deadline, and what it bounds is silence** (`AiRunRegistry.DefaultRunTimeout`, ten
+minutes without output). Nothing bounded a run before: the wait was linked only to the caller's
+token, so a CLI that never exited left the panel spinning with the stop button — inside a collapsed
+log — as the only way out. Expiry kills the process tree exactly as a stop does, but reports
+`RUN_TIMED_OUT::` rather than `RUN_CANCELLED::` (`XLANG-003`), because the user pressed nothing. The
+two sources are separate and linked into one token so the handler can tell which fired; a shutdown
+racing the deadline still reads as a cancellation. The constructor takes an override purely as a
+test seam.
+
+It counts silence rather than elapsed time because a review is **one** subprocess from spawn to exit
+(`AI-055` keeps a timed-out run out of the retry table for the same reason: the far side may still
+be working). As a total budget the deadline killed reviews that were doing exactly what they were
+asked — an Opus review at the ultra level died mid-answer, observed 2026-08-18 — while a genuinely
+hung child was caught no faster. A working agent writes continuously; a hung one writes nothing.
+Both pipe pumps therefore push the deadline back out on every read, in `PumpAsync`, anchored to the
+read and not to `EmitAsync`: that one drops blank lines and never runs for an untracked run, so a
+CLI printing only whitespace would otherwise be judged dead. The accepted cost is that a runaway
+agent which keeps talking is no longer bounded; a stop is still one click away, and no absolute
+ceiling was added on top.
 
 **A run executes inside the analysed repository, and used to run under its configuration.** The CLI
 is spawned with `WorkingDirectory` set to the project root (`AI-002`), so that repository's own

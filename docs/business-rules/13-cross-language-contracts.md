@@ -118,6 +118,12 @@ person reading the panel: one is "you stopped this", the other is "this never fi
 It carries the deadline in whole minutes after the marker, or nothing when the deadline is under a
 minute (only a test's), in which case `AiErrorBanner` uses wording that names no duration.
 
+The number is a **silence** window, not the run's length: the pumps push the deadline out on every
+read, so it names how long the engine said nothing rather than how long it ran (`AI-013`). The wire
+shape is unchanged by that — same marker, same whole minutes — but the renderer's wording for these
+three keys is not interchangeable with the old one, and `ai.runTimedOut`, `ai.runTimedOutPlain` and
+`ai.runTimedOutHint` say "went N minutes without writing anything" for exactly this reason.
+
 **Inputs / outputs**: `src/CodeFlow.App/Ai/AiOperations.cs` tags a limit/billing refusal by prefixing `QUOTA_MARKER`,
 and is careful not to double-prefix an already-tagged error. `claudeError.ts:22-35` then splits
 the remainder into `usage` vs `billing` using its own signal list

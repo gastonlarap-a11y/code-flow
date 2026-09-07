@@ -815,6 +815,8 @@ the same way it did before.
 3. `common.copyFailed` took a hardcoded `⌘C` **in both locales**. `manualCopyChord` resolves it from
    the platform, so the recovery instruction names a key the user's keyboard has.
 **Inputs / outputs**: `clipboardWrite(text: string)`; rejects a non-string rather than coercing.
+The main handler returns Electron's clipboard promise so IPC succeeds only after the write
+completes and propagates write failures (Electron 44 makes `clipboard.writeText` asynchronous).
 `openLogs()` takes no path — the main process picks its own log directory, because "reveal whatever
 the page names" is a wider capability than the one feature needing it.
 **Edge cases**: the toast now pauses its 5s timer on `focus`/`blur` as well as pointer enter/leave;

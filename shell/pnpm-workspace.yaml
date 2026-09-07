@@ -15,11 +15,14 @@ overrides:
 
   # Reached only through electron-builder's own schema validation, so nothing a user's input ever
   # touches — but the gate does not grade on exploitability and neither should this. `ajv` wants the
-  # 3.x line, so the pin follows it: 3.1.5 is that line's patched release and the registry's `three`
-  # tag, not the `latest` 4.x (GHSA-7p8r-x3mc-p8w7).
+  # 3.x line, so the pin follows it. 3.1.6 also fixes the subsequent host-normalization advisories
+  # (including GHSA-5jgf-p345-68v8 and GHSA-f65p-4m7j-42xc).
   #
   # Caught by `scripts/release.sh` before it wrote anything, which is what that step is for.
-  fast-uri@<3.1.5: ^3.1.5
+  fast-uri@<3.1.6: 3.1.6
+
+  # electron-builder's plist tooling needs the XML serialization fix (GHSA-6gmq-8vp8-gcm6).
+  '@xmldom/xmldom@<0.8.15': 0.8.15
 
   # Thirteen paths into this tree, every one of them through electron-builder, so the quadratic
   # `!!omap` parse is build-time like the two above — and pinned for the same reason: the gate does

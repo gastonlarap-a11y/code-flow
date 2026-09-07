@@ -615,7 +615,7 @@ function registerBridge(): void {
    */
   ipcMain.handle("codeflow:clipboardWrite", (_event, text: string) => {
     if (typeof text !== "string") throw new Error("clipboard writes take a string");
-    clipboard.writeText(text);
+    return clipboard.writeText(text);
   });
 
   ipcMain.handle("codeflow:dialog", async (event, kind: "openFile" | "openDirectory" | "save", options) => {

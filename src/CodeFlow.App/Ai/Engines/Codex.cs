@@ -88,6 +88,10 @@ public sealed class Codex : IAiEngine
 
         info.ArgumentList.Add(Pointer);
 
+        // Link-only PR reviews run in an application-owned directory without a Git checkout.
+        // This permits that workspace while retaining the sandbox policy below.
+        info.ArgumentList.Add("--skip-git-repo-check");
+
         if (!string.IsNullOrWhiteSpace(invocation.Model))
         {
             info.ArgumentList.Add("--model");

@@ -168,6 +168,41 @@ public sealed class AiCommandsTests
         Assert.Contains("the data", codex, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(null, false, "read-only")]
+    [InlineData("session-id", false, "read-only")]
+    [InlineData(null, true, "workspace-write")]
+    public void Codex_allows_a_workspace_without_git_and_preserves_its_sandbox(
+        string? sessionId, bool autoApproveEdits, string sandbox)
+    {
+        var workspace = Directory.CreateTempSubdirectory("codeflow-pr-review-");
+        try
+        {
+            var invocation = new AiInvocation(
+                "Review this PR", "diff --git a/file.cs b/file.cs",
+                Cwd: workspace.FullName, ResumeSessionId: sessionId, AutoApproveEdits: autoApproveEdits);
+            var command = new Codex().BuildCommand("codex", invocation);
+            var args = command.ArgumentList.ToList();
+
+            Assert.False(Directory.Exists(Path.Combine(workspace.FullName, ".git")));
+            Assert.Contains("--skip-git-repo-check", args);
+            Assert.Equal(sandbox, args[args.IndexOf("--sandbox") + 1]);
+            Assert.Equal("approval_policy=\"never\"", args[args.IndexOf("-c") + 1]);
+            Assert.Equal(workspace.FullName, command.WorkingDirectory);
+            Assert.Equal(workspace.FullName, args[args.IndexOf("--cd") + 1]);
+            Assert.Equal("exec", args[0]);
+            if (sessionId is not null)
+            {
+                Assert.Equal("resume", args[1]);
+                Assert.Equal(sessionId, args[2]);
+            }
+        }
+        finally
+        {
+            workspace.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void Every_built_in_template_has_text()
     {

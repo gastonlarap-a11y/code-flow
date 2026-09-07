@@ -151,7 +151,7 @@ hatch implies. When unset (or blank — a stored empty string counts as unset), 
 | Engine id | Binary (default) | argv shape | stdin | Output parsing | Error vs auth vs quota | Session resume | Model discovery | Agentic |
 |---|---|---|---|---|---|---|---|---|
 | `claude` | `claude` | `-p <prompt> [--append-system-prompt sp] [--model m] --output-format stream-json --verbose --setting-sources user [--tools t,… --allowedTools t,…] [--permission-mode acceptEdits] [--mcp-config path --strict-mcp-config] [--resume id]` | `inv.stdin_content` piped (CLI reads it) | Last `{"type":"result",…}` line of the stream (whole-buffer JSON fallback) | `is_error` field / stdout parsed even when exit≠0 (stderr is empty on this CLI's own failures) / `quota_signal` on the result text | Native `--resume <session_id>` | None (no listing subcommand, no cache) → frontend curated list | yes |
-| `codex` | `codex` | `exec [resume id] "<POINTER>" [--model m] --sandbox {read-only\|workspace-write} -c approval_policy="never" [--cd dir]` | Full brief (system+ask+INPUT) via `stdin_payload` override | stdout = final agent message only | Non-zero exit / `quota_signal` on stderr then stdout | Rollout id scraped from stderr's `session id:` preamble line; `codex exec resume <id>` | `cached_models()` reads `$CODEX_HOME/models_cache.json` (no subcommand spawned) | yes |
+| `codex` | `codex` | `exec [resume id] "<POINTER>" --skip-git-repo-check [--model m] --sandbox {read-only\|workspace-write} -c approval_policy="never" [--cd dir]` | Full brief (system+ask+INPUT) via `stdin_payload` override | stdout = final agent message only | Non-zero exit / `quota_signal` on stderr then stdout | Rollout id scraped from stderr's `session id:` preamble line; `codex exec resume <id>` | `cached_models()` reads `$CODEX_HOME/models_cache.json` (no subcommand spawned) | yes |
 | `gemini` (drives `agy`, the Antigravity CLI) | `agy` | `-p "<inline brief>"` or `-p "<pointer to temp file>" --add-dir <dir>` `[--model m] [--dangerously-skip-permissions] [--continue]` | nothing: `-p` doesn't read stdin, so `stdin_payload` is empty and the input travels inside the brief (AI-054) | stdout only | Non-zero exit / `quota_signal` on stderr then stdout | No native per-conversation resume; `SESSION_SENTINEL` + `--continue` (resumes agy's globally-last conversation) | `list_models_args` = `agy models` | yes |
 | `opencode` | `opencode` | `run "<pointer>" --format json [--model m] [--auto] [--dir cwd] [--session id] --file <payload path>` | nothing: not read by the CLI, so `stdin_payload` is empty and the full brief goes to the attached `--file` (AI-054) | `--format json` event stream: `text` events joined, `error` event wins | `error` event beats exit status / non-zero exit / `quota_signal` | Real `ses_…` id read from every event's `sessionID`; `--session <id>` | `list_models_args` = `opencode models` | yes |
 | `openai` (and any OpenAI-compatible endpoint) | `https://api.openai.com/v1` (endpoint, not a binary) | HTTP `POST {base}/chat/completions` — `Transport.OpenAiCompatible`, no argv | n/a (HTTP body: `messages` array) | `choices[0].message.content` | HTTP status: 401/403 → key rejected, 429 → quota (`quota_signal` matches the wording), 404 → unknown model, else raw | None — every request stands alone | HTTP `GET {base}/models`, filtered by `is_chat_model`, alphabetised | no |
@@ -213,7 +213,9 @@ the prompt argument; `--sandbox` is `workspace-write` when `auto_approve_edits` 
 `--ask-for-approval` flag, because `codex exec` errors on that flag as of 0.145+ while the
 config key works on every version; `--cd <dir>` sets the sandbox's workspace root in addition
 to `current_dir`, because the sandbox scope and the process's actual working directory are two
-separate things to Codex.
+separate things to Codex. Every invocation includes `--skip-git-repo-check` so link-only PR
+reviews can run in their application-owned workspace without a clone or a `.git` directory.
+This option does not change the sandbox or approval policy.
 
 **Session id**: scraped from the stderr preamble's `session id: <uuid>` line
 (`session_id_from_preamble`, `src/CodeFlow.App/Ai/Engines/Codex.cs` — matches either `session id:`/`session_id:`,
@@ -1289,9 +1291,9 @@ true of `--strict-mcp-config`.
 
 ### AI-030 Codex argv, sandbox and approval flags
 **Implementation**: `src/CodeFlow.App/Ai/Engines/Codex.cs`
-**Behaviour**: `codex exec [resume <id>] "<POINTER>" [--model m] --sandbox {workspace-write|read-only} -c approval_policy="never" [--cd dir]`, plus `current_dir`. `resume <id>` precedes the prompt (it is an `exec` subcommand). Sandbox is `workspace-write` iff `auto_approve_edits`, else `read-only`; `danger-full-access` is never used. `approval_policy` is forced to `"never"` via `-c` (not `--ask-for-approval`, which `codex exec` rejects on 0.145+).
+**Behaviour**: `codex exec [resume <id>] "<POINTER>" --skip-git-repo-check [--model m] --sandbox {workspace-write|read-only} -c approval_policy="never" [--cd dir]`, plus `current_dir`. `resume <id>` precedes the prompt (it is an `exec` subcommand). Sandbox is `workspace-write` iff `auto_approve_edits`, else `read-only`; `danger-full-access` is never used. `approval_policy` is forced to `"never"` via `-c` (not `--ask-for-approval`, which `codex exec` rejects on 0.145+).
 **Inputs / outputs**: `(binary, inv) -> Command`.
-**Edge cases**: `--cd` and `current_dir` are both set — the sandbox's workspace root and the process's actual cwd are tracked separately by Codex.
+**Edge cases**: `--cd` and `current_dir` are both set — the sandbox's workspace root and the process's actual cwd are tracked separately by Codex. Every invocation also passes `--skip-git-repo-check`, including resumed sessions, so a link-only PR review needs no Git checkout. Sandbox and approval restrictions remain unchanged.
 **Frontend dependency**: none directly.
 **Markers**: none
 

@@ -21,7 +21,7 @@ import { renderMarkdown } from "../../lib/markdown";
 import { listCommentThreads, targetKey, targetProjectId, type PrTarget } from "../../lib/prTarget";
 import { parseAnalysis, buildFixpack, formatFindingAsComment, formatSummaryComment } from "../../lib/parseAnalysis";
 import { Checkbox } from "../common/Checkbox";
-import { FindingCard, QualityGateBadges, SeverityCountBadges, SHORT_SUMMARY_MAX } from "./FindingCard";
+import { FindingCard, QualityGateBadges, ReviewAfterword, SeverityCountBadges, SHORT_SUMMARY_MAX } from "./FindingCard";
 import { PrCommentCard, PrCommentsSkeleton } from "./PrCommentCard";
 import { useUiStore } from "../../state/uiStore";
 import { usePrStore } from "../../state/prStore";
@@ -214,7 +214,11 @@ export function PrReviewSection({ target, pr }: { target: PrTarget; pr: PullRequ
             </a>
             {!loading && !error && parsed && (
               <div className="mt-1.5">
-                <QualityGateBadges grades={parsed.grades} findings={findings} />
+                <QualityGateBadges
+                  grades={parsed.grades}
+                  findings={findings}
+                  selfReportedGate={parsed.selfReportedGate}
+                />
               </div>
             )}
           </div>
@@ -343,6 +347,13 @@ export function PrReviewSection({ target, pr }: { target: PrTarget; pr: PullRequ
                 ))}
               </div>
             </div>
+            {parsed && <ReviewAfterword strengths={parsed.strengths} notes={parsed.notes} />}
+          </div>
+        )}
+
+        {!loading && !error && reviewText && findings.length === 0 && parsed && (
+          <div className="mt-3">
+            <ReviewAfterword strengths={parsed.strengths} notes={parsed.notes} />
           </div>
         )}
 

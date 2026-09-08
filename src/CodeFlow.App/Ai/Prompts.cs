@@ -12,7 +12,9 @@ namespace CodeFlow.Ai;
 /// emit are not, and must never be translated</b>. <c>DEFAULT_PR_REVIEW_STANDARD</c> defines a
 /// finding format that <em>two independent parsers</em> match on — one in the backend's review
 /// memory, one in the renderer's <c>parseAnalysis.ts</c> — so <c>📍 Ubicación</c>,
-/// <c>💭 Por qué</c>, <c>🎯 Confianza</c>, <c>📈 CALIDAD</c>, the severity words and the
+/// <c>💭 Por qué</c>, <c>🎯 Confianza</c>, <c>📈 CALIDAD</c>, <c>🚦 Quality Gate</c>, the five
+/// severity emoji (<c>🔴 🚨 🟠 🟡 🔵</c>), the severity words, the
+/// <c>## 👍 Lo que está bien</c> / <c>## 🗒️ Notas</c> section headers and the
 /// <c>## NIVEL DE REVISIÓN ACTIVO:</c> header are payload, not prose. Rewriting one changes what
 /// the model emits and breaks both parsers at once, and every stored <c>review_runs</c> row with
 /// it. So is the standing order to answer in Spanish: the review is read in Spanish.

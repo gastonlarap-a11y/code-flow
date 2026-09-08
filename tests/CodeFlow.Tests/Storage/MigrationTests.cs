@@ -251,6 +251,60 @@ public sealed class MigrationTests : IDisposable
     }
 
     [Fact]
+    public void An_unedited_seeded_prompt_is_refreshed_to_the_current_built_in_while_an_edited_one_is_kept()
+    {
+        var priorDefault = File.ReadAllText(
+            Path.Combine(FixtureCatalog.Directory, "prompts/review_standard.v2.5.1.txt"));
+
+        // The fixture must be a text CodeFlow really shipped, or the refresh can never fire.
+        Assert.Contains(SeededPromptHistory.Digest(priorDefault), SeededPromptHistory.ReviewStandard);
+        Assert.NotEqual(CodeFlow.Ai.Prompts.DefaultPrReviewStandard, priorDefault);
+
+        using var connection = OpenSeeded(seed: null);
+        Execute(connection,
+            "INSERT INTO workspaces (id, name, icon, color, sort_order, created_at) VALUES " +
+            "('pristine', 'A', 'folder', '#000', 0, '2026-01-01T00:00:00.0000000+00:00'), " +
+            "('edited', 'B', 'folder', '#000', 1, '2026-01-01T00:00:00.0000000+00:00')");
+
+        Migrations.Run(connection); // seeds both rows with the current default
+
+        using (var update = connection.CreateCommand())
+        {
+            update.CommandText =
+                "UPDATE workspace_prompts SET content = $c WHERE workspace_id = $w AND kind = 'review_standard'";
+            var content = update.Parameters.Add("$c", SqliteType.Text);
+            var workspace = update.Parameters.Add("$w", SqliteType.Text);
+
+            content.Value = priorDefault;
+            workspace.Value = "pristine";
+            update.ExecuteNonQuery();
+
+            content.Value = "Revisa solo la seguridad.";
+            workspace.Value = "edited";
+            update.ExecuteNonQuery();
+        }
+
+        Migrations.Run(connection);
+
+        Assert.Equal(
+            CodeFlow.Ai.Prompts.DefaultPrReviewStandard,
+            Scalar(connection, "SELECT content FROM workspace_prompts WHERE workspace_id = 'pristine' AND kind = 'review_standard'"));
+        Assert.Equal(
+            "Revisa solo la seguridad.",
+            Scalar(connection, "SELECT content FROM workspace_prompts WHERE workspace_id = 'edited' AND kind = 'review_standard'"));
+
+        // Idempotent: the refreshed row now hashes to the current default, which is not in the
+        // history set, so a further run leaves both alone.
+        Migrations.Run(connection);
+        Assert.Equal(
+            CodeFlow.Ai.Prompts.DefaultPrReviewStandard,
+            Scalar(connection, "SELECT content FROM workspace_prompts WHERE workspace_id = 'pristine' AND kind = 'review_standard'"));
+        Assert.Equal(
+            "Revisa solo la seguridad.",
+            Scalar(connection, "SELECT content FROM workspace_prompts WHERE workspace_id = 'edited' AND kind = 'review_standard'"));
+    }
+
+    [Fact]
     public void An_existing_workspaces_table_gains_the_git_identity_pair()
     {
         // The legacy seed's workspaces table predates the pair, so this exercises the AddColumn

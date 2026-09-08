@@ -33,14 +33,15 @@ produces zero findings.
 The matching regexes are character-identical across the two languages:
 
 `
-^###\s*(🚨|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$
+^###\s*(🔴|🚨|🟠|🟡|🔵|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$
 📍\s*Ubicaci[oó]n:\s*([^\n]+)
 🎯\s*Confianza:\s*(\d+)
 ^📈\s*CALIDAD:\s*Fiabilidad=([A-E])\s+Seguridad=([A-E])\s+Mantenibilidad=([A-E])\s*$
+^🚦\s*Quality Gate:\s*(PASSED|FAILED)\s*$   (case-insensitive; TS `GATE_RE`)
 `
 
 **The severity comes from the word, not the emoji.** The header carries it twice — one of five words
-inside the brackets, and one of three emoji the prompt asks be derived from it — and both parsers
+inside the brackets, and one of the five emoji the prompt asks be derived from it — and both parsers
 used to read only the emoji and discard the word. When the model wrote
 `### 🚨 [Mayor · Security Hotspot]`, against the mapping its own prompt gives it, two `Mayor`
 findings were stored and rendered as `critical` and the Quality Gate went red for them. Observed on
@@ -53,16 +54,36 @@ this repository's pull request #60.
 | `Menor`, `Info` | `info` |
 | anything else | falls back to the emoji |
 
-The emoji fallback keeps 1.7.2's drifted vocabulary (`Alta`, `Media`) parsing exactly as before.
-`ReviewMemory.SeverityOf` and `parseAnalysis.ts`'s `severityOf` hold the same table and change
-together; the inverse map that picks an emoji when reposting a finding (`parseAnalysis.ts:134-136`)
-is unchanged and now receives a corrected severity.
+Emoji fallback: `🔴`/`🚨`→`critical`, `🟠`/`⚠️`→`warning`, everything else (`🟡`, `🔵`, `ℹ️`)→`info`.
+`⚠️` and `ℹ️` stay in the alternation and the fallback so 1.7.2's drifted vocabulary (`Alta`,
+`Media`) and every `review_runs` row written before the five-emoji scale still parse exactly as
+before. `ReviewMemory.SeverityOf` and `parseAnalysis.ts`'s `severityOf` hold the same table and
+change together. The **five-emoji scale** (`🔴` Blocker · `🚨` Crítico · `🟠` Mayor · `🟡` Menor ·
+`🔵` Info) came from re-syncing the prompts with the source review runbook (WF-PR-REVIEWER); it is
+what a rendered review shows and what `parseAnalysis.ts` re-emits when reposting a finding
+(`findingEmoji`, keyed on the new `severityLabel` field — the raw severity word, display-only, `null`
+when unrecognised).
 
-**Inputs / outputs**: A finding block is `### {emoji} [{Severidad} · {Tipo}] {Categoría} · F-{NNN}`,
+**The Quality Gate line is advisory, not the gate of record.** The model emits
+`🚦 Quality Gate: PASSED|FAILED` on the second line; `parseAnalysis.ts` lifts it into
+`ParsedAnalysis.selfReportedGate`. The gate that decides the badge colour and whether a finding is
+postable is still `computeQualityGatePassed(findings)`, computed deterministically from the parsed
+findings. The renderer only surfaces the model's word when it disagrees with the computed one.
+
+**The trailing sections.** After the findings the standard appends, optionally,
+`## 👍 Lo que está bien` and `## 🗒️ Notas` — prose for the human, no id, no severity, no effect on
+the gate. Both parsers lift them out **before** slicing the finding blocks (`parseAnalysis.ts`'s
+`AFTERWORD_HEADING_RE` → `strengths` / `notes`; `ReviewMemory.AfterwordPattern` caps the last
+finding's block), because a digit inside a strengths bullet would otherwise be read as that
+finding's `🎯 Confianza`.
+
+**Inputs / outputs**: A finding block is `### {emoji} [{Severidad} · {Tipo}] {categoría} · F-{NNN}`,
 followed by a subtitle line, then `📍 Ubicación: {file}:{lines}` and `🎯 Confianza: {0-100}`.
-The subtitle is inferred positionally — the first non-empty line after the header and before
-`📍`/`💭`.
-**Edge cases**: `Ubicaci[oó]n` accepts both the accented and unaccented spelling on both sides.
+`{categoría}` is an English kebab-case slug (the standard carries a controlled vocabulary; a Spanish
+slug cannot group with its English twin across reviews). The subtitle is inferred positionally — the
+first non-empty line after the header and before `📍`/`💭`.
+**Edge cases**: `Ubicaci[oó]n` accepts both the accented and unaccented spelling on both sides; the
+two trailing-section headers accept a dropped accent (`Lo que esta bien`).
 **Frontend dependency**: `renderer/src/lib/parseAnalysis.ts`, which every review-rendering component uses.
 **Markers**: `VERBATIM` — and the reason `AGENTS.md`'s English-only rule is exempted for
 prompt text. Translating any of this changes what the model emits and breaks both parsers at
@@ -70,12 +91,15 @@ once, and every stored `review_runs` row becomes unparseable.
 
 **The exemption is narrower than "the prompts are Spanish".** Since 1.9.x the review prompts'
 *instructions* are English, like the rest of the codebase. What the exemption covers is everything
-the model is told to **emit** and everything a parser matches on — the four regexes above, the
-severity words (`Blocker`/`Crítico`/`Mayor`/`Menor`/`Info`), the type words
+the model is told to **emit** and everything a parser matches on — the five regexes above, the
+five severity emoji (`🔴 🚨 🟠 🟡 🔵`), the severity words
+(`Blocker`/`Crítico`/`Mayor`/`Menor`/`Info`), the type words
 (`Bug`/`Vulnerabilidad`/`Code Smell`/`Security Hotspot`), the `## NIVEL DE REVISIÓN ACTIVO:` header
-(`AI-022`), the `💭 Por qué` / `💡 Sugerencia` / `🛠️ Ejemplo de solución` labels, and the standing
-order to answer in Spanish, which is what keeps a stored review readable by the person who asked for
-it. Those stay byte for byte. The line that tells the model *why* it is reading a diff does not.
+(`AI-022`), the `💭 Por qué` / `💡 Sugerencia` / `🛠️ Ejemplo de solución` labels, the
+`🚦 Quality Gate:` line, the `## 👍 Lo que está bien` / `## 🗒️ Notas` section headers, and the
+standing order to answer in Spanish, which is what keeps a stored review readable by the person who
+asked for it. Those stay byte for byte. The line that tells the model *why* it is reading a diff does
+not.
 
 Note also that `AGENTS.md` describes PR review as returning "a single JSON object with
 `summary`, `outcome` and a `findings[]` array". The implementation does not do that. This

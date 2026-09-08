@@ -148,17 +148,23 @@ documents the parsing mechanics `XLANG-001` does not restate.
 
 ### Header matching (`parse_findings`, `src/CodeFlow.App/Review/ReviewMemory.cs`)
 
-One `Regex` (`(?m)^###\s*(🚨|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$`) finds every
-finding header line. `header.find_iter` separately collects each match's byte offset so the text
-can be sliced into per-finding **blocks**: block *i* runs from header *i*'s start to header *i+1*'s
-start (or the end of the text for the last one). Everything downstream (subtitle, location,
-confidence) is extracted from within that finding's own block, not from the whole document — so a
-`📍`/`🎯` field belonging to finding *N+1* can never bleed into finding *N*'s parse.
+One `Regex` (`(?m)^###\s*(🔴|🚨|🟠|🟡|🔵|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$`)
+finds every finding header line. `header.find_iter` separately collects each match's byte offset so
+the text can be sliced into per-finding **blocks**: block *i* runs from header *i*'s start to header
+*i+1*'s start (or, for the last one, to the first `## 👍`/`## 🗒️` heading — `AfterwordPattern` — or
+the end of the text). Capping the last block at the trailing sections keeps a digit in a
+`Lo que está bien` bullet from being read as that finding's `🎯 Confianza`. Everything downstream
+(subtitle, location, confidence) is extracted from within that finding's own block, not from the
+whole document — so a `📍`/`🎯` field belonging to finding *N+1* can never bleed into finding *N*'s
+parse.
 
-Per match: capture group 1 (emoji) maps to `severity` — `🚨`→`critical`, `⚠️`→`warning`, anything
-else (only `ℹ️` in practice)→`info`; group 3 (trimmed) is `tipo`; group 4 (trimmed) is `categoria`;
-group 5 (trimmed) is `id` — the literal `F-NNN` string the **model** wrote in its own output (see
-`AMBIGUOUS-REVIEW-a` below for what this means for reconciliation).
+Per match: capture group 1 (emoji) maps to `severity` — `🔴`/`🚨`→`critical`, `🟠`/`⚠️`→`warning`,
+anything else (`🟡`, `🔵`, `ℹ️`)→`info` — but the **word** in group 2 wins when it is one of the five
+(`XLANG-001`); group 3 (trimmed) is `tipo`; group 4 (trimmed) is `categoria`; group 5 (trimmed) is
+`id` — the literal `F-NNN` string the **model** wrote in its own output (see `AMBIGUOUS-REVIEW-a`
+below for what this means for reconciliation). The five-emoji scale and the `🚦 Quality Gate` /
+`## 👍` / `## 🗒️` literals came from re-syncing the prompts with the source review runbook; `⚠️`
+and `ℹ️` stay recognised so every `review_runs` row written before it still parses.
 
 **Subtitle** (`src/CodeFlow.App/Review/ReviewMemory.cs`): the first line of the block, after the header itself,
 that is non-empty after trimming and does not start with `📍` or `💭` (the "why" field,

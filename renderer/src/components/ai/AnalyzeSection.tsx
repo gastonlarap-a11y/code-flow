@@ -23,7 +23,7 @@ import { ElapsedTime } from "../common/ElapsedTime";
 import { RunStats } from "../common/RunStats";
 import { CopyAnswer } from "../common/CopyAnswer";
 import { renderMarkdown } from "../../lib/markdown";
-import { FindingCard, QualityGateBadges, SHORT_SUMMARY_MAX } from "./FindingCard";
+import { FindingCard, QualityGateBadges, ReviewAfterword, SeverityCountBadges, SHORT_SUMMARY_MAX } from "./FindingCard";
 import { ReviewLevelSelector } from "./ReviewLevelSelector";
 import { PublishVerdict, TicketVerdictPanel, VerdictSummary } from "./TicketVerdictPanel";
 import { AiErrorBanner } from "./AiErrorBanner";
@@ -192,12 +192,6 @@ export function AnalyzeSection({ project }: { project: Project }) {
 
   const findings = parsed?.analysis.findings ?? [];
   const summary = parsed?.analysis.summary ?? "";
-  const counts = {
-    critical: findings.filter((f) => f.severity === "critical").length,
-    warning: findings.filter((f) => f.severity === "warning").length,
-    info: findings.filter((f) => f.severity === "info").length,
-  };
-
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-auto p-4">
@@ -207,25 +201,15 @@ export function AnalyzeSection({ project }: { project: Project }) {
             <div className="min-w-0 flex-1">
               <p className="mb-0.5 text-body font-semibold">{t("analyze.title")}</p>
               {!loading && !error && parsed && (
-                <QualityGateBadges grades={parsed.analysis.grades} findings={findings} />
+                <QualityGateBadges
+                  grades={parsed.analysis.grades}
+                  findings={findings}
+                  selfReportedGate={parsed.analysis.selfReportedGate}
+                />
               )}
               {!loading && !error && (findings.length > 0 || parsed?.verdict) && (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-badge">
-                  {counts.critical > 0 && (
-                    <span className="rounded-full px-1.5 py-0.5 font-medium" style={{ background: "color-mix(in oklab, var(--cf-danger) 16%, transparent)", color: "var(--cf-danger)" }}>
-                      {counts.critical} {t("analyze.critical")}
-                    </span>
-                  )}
-                  {counts.warning > 0 && (
-                    <span className="rounded-full px-1.5 py-0.5 font-medium" style={{ background: "color-mix(in oklab, var(--cf-warning) 16%, transparent)", color: "var(--cf-warning)" }}>
-                      {counts.warning} {t("analyze.warning")}
-                    </span>
-                  )}
-                  {counts.info > 0 && (
-                    <span className="rounded-full px-1.5 py-0.5 font-medium" style={{ background: "color-mix(in oklab, var(--cf-accent) 16%, transparent)", color: "var(--cf-accent)" }}>
-                      {counts.info} {t("analyze.info")}
-                    </span>
-                  )}
+                  <SeverityCountBadges findings={findings} />
                   {parsed?.verdict && <VerdictSummary verdict={parsed.verdict} />}
                 </div>
               )}
@@ -386,6 +370,8 @@ export function AnalyzeSection({ project }: { project: Project }) {
                 </div>
               </div>
             )}
+
+            <ReviewAfterword strengths={parsed.analysis.strengths} notes={parsed.analysis.notes} />
 
             {/* The end of the answer. The copy button is tied to there being an answer, not to
                 there being a footer: an older run stored before the stamp existed has no footer and

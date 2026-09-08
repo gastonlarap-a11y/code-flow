@@ -16,12 +16,15 @@ import { IconButton } from "../common/IconButton";
 import { Tooltip } from "../common/Tooltip";
 import {
   computeQualityGatePassed,
+  findingSeverityLabel,
   formatFindingAsComment,
   formatFindingAsFixPrompt,
   locationLabel,
   type AnalysisFinding,
   type QualityGrades,
+  type SeverityLabel,
 } from "../../lib/parseAnalysis";
+import type { TranslationKey } from "../../lib/i18n/translations";
 import { useCopy } from "../../lib/ui/useCopy";
 import { renderInlineMarkdown } from "../../lib/markdown";
 import { resolveFindingWithAi } from "../../lib/ipc/commands";
@@ -202,28 +205,38 @@ export function ResolvedChip() {
   );
 }
 
-/** Severity tally pills (`3 Critical · 2 Warning · …`) — a scannable summary of a findings list,
+/** The five SonarQube severities, in the order the standard reports them, with the display key and
+ * the bucket colour each maps to. `severity` (three buckets) still drives the colour; the label is
+ * the fine-grained one the model wrote. */
+const SEVERITY_LABEL_META: Record<SeverityLabel, { key: TranslationKey; color: string }> = {
+  Blocker: { key: "sev.blocker", color: "var(--cf-danger)" },
+  Crítico: { key: "sev.critical", color: "var(--cf-danger)" },
+  Mayor: { key: "sev.major", color: "var(--cf-warning)" },
+  Menor: { key: "sev.minor", color: "var(--cf-accent)" },
+  Info: { key: "sev.info", color: "var(--cf-accent)" },
+};
+const SEVERITY_LABEL_ORDER = Object.keys(SEVERITY_LABEL_META) as SeverityLabel[];
+
+/** Severity tally pills (`1 Blocker · 3 Mayor · …`) — a scannable summary of a findings list,
  * shown in the PR-review findings header and the pre-commit analysis header so the two read the
  * same. Renders nothing when there are no findings. */
 export function SeverityCountBadges({ findings }: { findings: AnalysisFinding[] }) {
   const t = useT();
-  const items = [
-    { severity: "critical" as const, label: t("analyze.critical"), color: "var(--cf-danger)" },
-    { severity: "warning" as const, label: t("analyze.warning"), color: "var(--cf-warning)" },
-    { severity: "info" as const, label: t("analyze.info"), color: "var(--cf-accent)" },
-  ]
-    .map((i) => ({ ...i, n: findings.filter((f) => f.severity === i.severity).length }))
-    .filter((i) => i.n > 0);
+  const items = SEVERITY_LABEL_ORDER.map((label) => ({
+    label,
+    ...SEVERITY_LABEL_META[label],
+    n: findings.filter((f) => findingSeverityLabel(f) === label).length,
+  })).filter((i) => i.n > 0);
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-badge">
       {items.map((i) => (
         <span
-          key={i.severity}
+          key={i.label}
           className="rounded-full px-1.5 py-0.5 font-medium"
           style={{ background: `color-mix(in oklab, ${i.color} 16%, transparent)`, color: i.color }}
         >
-          {i.n} {i.label}
+          {i.n} {t(i.key)}
         </span>
       ))}
     </div>
@@ -231,10 +244,22 @@ export function SeverityCountBadges({ findings }: { findings: AnalysisFinding[] 
 }
 
 /** Quality Gate pill + the model's own A–E grades — shown once per review, above the
- * findings list, in both the pre-commit analysis view and the PR review view. */
-export function QualityGateBadges({ grades, findings }: { grades: QualityGrades | null; findings: AnalysisFinding[] }) {
+ * findings list, in both the pre-commit analysis view and the PR review view.
+ *
+ * `selfReportedGate` is the model's own "🚦 Quality Gate:" line. `computeQualityGatePassed` stays
+ * the gate of record (the pill), so this only surfaces a note when the two disagree (`XLANG-001`). */
+export function QualityGateBadges({
+  grades,
+  findings,
+  selfReportedGate,
+}: {
+  grades: QualityGrades | null;
+  findings: AnalysisFinding[];
+  selfReportedGate?: "PASSED" | "FAILED" | null;
+}) {
   const t = useT();
   const passed = computeQualityGatePassed(findings);
+  const computed = passed ? "PASSED" : "FAILED";
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-badge">
       <span
@@ -244,15 +269,48 @@ export function QualityGateBadges({ grades, findings }: { grades: QualityGrades 
           color: passed ? "var(--cf-success)" : "var(--cf-danger)",
         }}
       >
-        {passed ? "✅" : "❌"} {t(passed ? "analyze.qualityGatePassed" : "analyze.qualityGateFailed")}
+        🚦 {passed ? "✅" : "❌"} {t(passed ? "analyze.qualityGatePassed" : "analyze.qualityGateFailed")}
       </span>
       {grades && (
         <span className="text-[var(--cf-text-muted)]">
-          {t("analyze.reliability")} <strong className="text-[var(--cf-text)]">{grades.reliability}</strong> ·{" "}
-          {t("analyze.security")} <strong className="text-[var(--cf-text)]">{grades.security}</strong> ·{" "}
-          {t("analyze.maintainability")} <strong className="text-[var(--cf-text)]">{grades.maintainability}</strong>
+          🛡️ {t("analyze.reliability")} <strong className="text-[var(--cf-text)]">{grades.reliability}</strong> ·{" "}
+          🔒 {t("analyze.security")} <strong className="text-[var(--cf-text)]">{grades.security}</strong> ·{" "}
+          🧹 {t("analyze.maintainability")} <strong className="text-[var(--cf-text)]">{grades.maintainability}</strong>
         </span>
       )}
+      {selfReportedGate && selfReportedGate !== computed && (
+        <span className="text-[var(--cf-text-muted)] italic">{t("review.selfGateDiffers", { gate: selfReportedGate })}</span>
+      )}
+    </div>
+  );
+}
+
+/** "## 👍 Lo que está bien" / "## 🗒️ Notas" — the two prose sections the standard appends after
+ * the findings. Rendered after the findings list in both review views; nothing when both empty. */
+export function ReviewAfterword({ strengths, notes }: { strengths: string[]; notes: string[] }) {
+  const t = useT();
+  if (strengths.length === 0 && notes.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      {([
+        { emoji: "👍", title: t("review.strengths"), items: strengths },
+        { emoji: "🗒️", title: t("review.notes"), items: notes },
+      ] as const)
+        .filter((s) => s.items.length > 0)
+        .map((s) => (
+          <div key={s.title} className="rounded-lg border border-[var(--cf-border)] bg-[var(--cf-surface-raised)] px-3 py-2.5">
+            <p className="mb-1 text-badge font-semibold uppercase tracking-wide text-[var(--cf-text-muted)]">
+              {s.emoji} {s.title}
+            </p>
+            <ul className="list-disc space-y-1 pl-4 text-ui text-[var(--cf-text)]">
+              {s.items.map((item, idx) => (
+                <li key={idx}>
+                  <InlineMarkdown text={item} className="cf-markdown-inline" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
     </div>
   );
 }
@@ -298,8 +356,10 @@ export function FindingCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5 text-badge text-[var(--cf-text-muted)]">
             <span className="font-semibold uppercase tracking-wide" style={{ color }}>
-              {finding.type}
+              {findingSeverityLabel(finding)}
             </span>
+            <span>·</span>
+            <span>{finding.type}</span>
             <span>·</span>
             <span>{finding.category}</span>
             <span>·</span>

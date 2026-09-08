@@ -17,9 +17,9 @@ namespace CodeFlow.Review;
 /// The finding parse is deliberately minimal: it extracts only what memory and reconciliation need.
 /// The canonical, user-facing render stays in <c>renderer/src/lib/parseAnalysis.ts</c>, and this has
 /// to track the same header format — that is <c>XLANG-001</c>, a three-way contract between the
-/// prompt that produces the markdown, this parser and the TypeScript one. The three patterns below
-/// are copied character for character from 1.7.2; paraphrasing one makes reviews silently
-/// parse to zero findings.
+/// prompt that produces the markdown, this parser and the TypeScript one. The header/location/
+/// confidence patterns below are character-identical to that parser's; paraphrasing one makes
+/// reviews silently parse to zero findings.
 /// </para>
 /// </remarks>
 internal static partial class ReviewMemory
@@ -29,18 +29,18 @@ internal static partial class ReviewMemory
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The header carries the severity twice: as one of five words inside the brackets, and as one of
-    /// three emoji the prompt asks be derived from it. Both parsers used to read only the emoji and
-    /// throw the word away, so when the model wrote <c>### 🚨 [Mayor · Security Hotspot]</c> — the
-    /// right word, the wrong emoji, against its own instructions — two <c>Mayor</c> findings were
-    /// stored as <c>critical</c> and the Quality Gate went red for them. Observed on this
-    /// repository's own pull request.
+    /// The header carries the severity twice: as one of five words inside the brackets, and as an
+    /// emoji the prompt asks be derived from it. Both parsers used to read only the emoji and throw
+    /// the word away, so when the model wrote <c>### 🚨 [Mayor · Security Hotspot]</c> — the right
+    /// word, the wrong emoji, against its own instructions — two <c>Mayor</c> findings were stored as
+    /// <c>critical</c> and the Quality Gate went red for them. Observed on this repository's own pull
+    /// request.
     /// </para>
     /// <para>
     /// The word wins because it is the one the model reasoned about; the emoji is decoration derived
-    /// from it, one lossy step further away — three symbols for five levels. The emoji stays as the
-    /// fallback for a word this does not recognise, which is exactly the behaviour that was there
-    /// before, so nothing that parsed then stops parsing now.
+    /// from it. Since the WF-PR-REVIEWER re-sync the prompt asks for one of five emoji
+    /// (<c>🔴 🚨 🟠 🟡 🔵</c>); <c>⚠️</c> and <c>ℹ️</c> stay in the fallback so a word this does not
+    /// recognise on an older <c>review_runs</c> row still resolves as it did before.
     /// </para>
     /// <para>
     /// <c>XLANG-001</c>: <c>renderer/src/lib/parseAnalysis.ts</c> holds the same table and the two
@@ -55,8 +55,8 @@ internal static partial class ReviewMemory
             "menor" or "info" => "info",
             _ => emoji switch
             {
-                "🚨" => "critical",
-                "⚠️" => "warning",
+                "🔴" or "🚨" => "critical",
+                "🟠" or "⚠️" => "warning",
                 _ => "info",
             },
         };
@@ -72,10 +72,21 @@ internal static partial class ReviewMemory
         var headers = HeaderPattern().Matches(reviewMarkdown);
         var findings = new List<MemoryFinding>(headers.Count);
 
+        // Where the trailing "## 👍 / ## 🗒️" prose starts, so the last finding's block stops before
+        // it (a strengths bullet's digit is not this finding's confidence).
+        var afterwordStart = AfterwordPattern().Match(reviewMarkdown) is { Success: true } afterword
+            ? afterword.Index
+            : reviewMarkdown.Length;
+
         for (var i = 0; i < headers.Count; i++)
         {
             var header = headers[i];
             var blockEnd = i + 1 < headers.Count ? headers[i + 1].Index : reviewMarkdown.Length;
+            if (afterwordStart > header.Index && afterwordStart < blockEnd)
+            {
+                blockEnd = afterwordStart;
+            }
+
             var block = reviewMarkdown[header.Index..blockEnd];
 
             var (archivo, lineas) = LocationPattern().Match(block) is { Success: true } location
@@ -619,7 +630,10 @@ internal static partial class ReviewMemory
         static string Normalise(string path) => path.TrimStart('/').ToLowerInvariant();
     }
 
-    [GeneratedRegex(@"(?m)^###\s*(🚨|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$")]
+    // Five severity emoji since the WF-PR-REVIEWER re-sync (🔴 Blocker · 🚨 Crítico · 🟠 Mayor ·
+    // 🟡 Menor · 🔵 Info); ⚠️ and ℹ️ stay so every review_runs row written before it still parses.
+    // Character-identical to parseAnalysis.ts's HEADER_RE — XLANG-001.
+    [GeneratedRegex(@"(?m)^###\s*(🔴|🚨|🟠|🟡|🔵|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$")]
     private static partial Regex HeaderPattern();
 
     [GeneratedRegex(@"📍\s*Ubicaci[oó]n:\s*([^\n]+)")]
@@ -627,4 +641,10 @@ internal static partial class ReviewMemory
 
     [GeneratedRegex(@"🎯\s*Confianza:\s*(\d+)")]
     private static partial Regex ConfidencePattern();
+
+    // The first "## 👍 Lo que está bien" / "## 🗒️ Notas" heading — prose the standard appends after
+    // the findings. It must not fall inside the last finding's block, or a number in a strengths
+    // bullet is read as that finding's confidence. XLANG-001.
+    [GeneratedRegex(@"(?m)^##\s+(?:👍|🗒)")]
+    private static partial Regex AfterwordPattern();
 }

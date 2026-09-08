@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 namespace CodeFlow.Storage;
 
 /// <summary>
-/// The startup migration procedure: 20 steps, run to completion before anything reads the schema.
+/// The startup migration procedure: 21 steps, run to completion before anything reads the schema.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -42,6 +42,7 @@ internal static class Migrations
         // INSERT OR IGNORE below would discard the user's own edited standard, permanently.
         MigrateReviewStandardsIntoPrompts(connection);
         BackfillWorkspacePrompts(connection);
+        RefreshUneditedSeededPrompts(connection);
 
         DropLegacyInstalledSkills(connection);
         AddSessionIdToActivityLog(connection);
@@ -351,6 +352,68 @@ internal static class Migrations
                 )
                 """,
                 ("$kind", kind), ("$content", text), ("$now", now));
+        }
+    }
+
+    /// <summary>
+    /// Replaces a seeded prompt still holding a former built-in default with the current one,
+    /// leaving a user-edited methodology untouched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="BackfillWorkspacePrompts"/> only ever seeds a workspace that has no row for a
+    /// kind, so once a workspace exists it never sees a new built-in — a shipped change to
+    /// <c>DEFAULT_PR_REVIEW_STANDARD</c> reaches only workspaces created afterwards. This closes
+    /// that gap for the rows nobody has touched: a row whose content hashes to an entry in
+    /// <see cref="SeededPromptHistory"/> is a pristine former default, so it is rewritten to the
+    /// current text; anything else is the user's own and is left alone.
+    /// </para>
+    /// <para>
+    /// Idempotent by inspection like every other step: after it runs, a refreshed row hashes to the
+    /// current default, which is not in the history set, so a second pass is a no-op. Runs after
+    /// <see cref="BackfillWorkspacePrompts"/> so a workspace seeded on this same launch is
+    /// considered too; no other ordering constraint.
+    /// </para>
+    /// </remarks>
+    private static void RefreshUneditedSeededPrompts(SqliteConnection connection)
+    {
+        if (!TableExists(connection, "workspace_prompts"))
+        {
+            return;
+        }
+
+        var now = Clock.Now();
+
+        foreach (var (kind, current, priorDigests) in new[]
+                 {
+                     ("review_standard", Prompts.DefaultPrReviewStandard, SeededPromptHistory.ReviewStandard),
+                     ("ticket_review_standard", Prompts.DefaultTicketReviewStandard, SeededPromptHistory.TicketReviewStandard),
+                 })
+        {
+            var stale = new List<string>();
+
+            using (var read = connection.CreateCommand())
+            {
+                read.CommandText = "SELECT workspace_id, content FROM workspace_prompts WHERE kind = $kind";
+                read.Parameters.AddWithValue("$kind", kind);
+
+                using var reader = read.ExecuteReader();
+                while (reader.Read())
+                {
+                    var content = reader.GetString(1);
+                    if (content != current && priorDigests.Contains(SeededPromptHistory.Digest(content)))
+                    {
+                        stale.Add(reader.GetString(0));
+                    }
+                }
+            }
+
+            foreach (var workspaceId in stale)
+            {
+                Execute(connection,
+                    "UPDATE workspace_prompts SET content = $content, updated_at = $now WHERE workspace_id = $id AND kind = $kind",
+                    ("$content", current), ("$now", now), ("$id", workspaceId), ("$kind", kind));
+            }
         }
     }
 

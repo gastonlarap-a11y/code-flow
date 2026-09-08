@@ -3,6 +3,7 @@ import {
   buildReviewComments,
   computeQualityGatePassed,
   formatFindingAsComment,
+  formatSummaryComment,
   locationLabel,
   parseAnalysis,
 } from "./parseAnalysis";
@@ -202,7 +203,7 @@ describe("what reaches the pull request", () => {
     if (!firstFinding) throw new Error("expected a finding");
     const comment = formatFindingAsComment(firstFinding);
 
-    expect(comment).toContain("### 🚨 [Bug] Seguridad · F-001");
+    expect(comment).toContain("### 🚨 [Crítico · Bug] Seguridad · F-001");
     expect(comment).not.toContain("📍");
     expect(comment).toContain("💭 **Por qué:**");
     expect(comment).toContain("🎯 Confianza: 95/100");
@@ -227,5 +228,115 @@ describe("what reaches the pull request", () => {
   test("a range renders as a range and a single line does not", () => {
     expect(locationLabel({ file: "a.ts", startLine: 1, endLine: 4 })).toBe("a.ts:1-4");
     expect(locationLabel({ file: "a.ts", startLine: 1, endLine: 1 })).toBe("a.ts:1");
+  });
+});
+
+/**
+ * The WF-PR-REVIEWER re-sync: the five-emoji severity scale, the "🚦 Quality Gate" line and the
+ * two trailing prose sections. All three are `XLANG-001` — `ReviewMemory.cs` tracks the same shape.
+ */
+describe("five-emoji severity scale", () => {
+  const withHeader = (header: string) => parseAnalysis(`${header}\ncuerpo`).findings[0];
+
+  test("each of the five emoji lands on a bucket and a label", () => {
+    expect(withHeader("### 🔴 [Blocker · Bug] data-loss · F-001")).toMatchObject({
+      severity: "critical",
+      severityLabel: "Blocker",
+    });
+    expect(withHeader("### 🚨 [Crítico · Bug] npe · F-001")).toMatchObject({ severity: "critical", severityLabel: "Crítico" });
+    expect(withHeader("### 🟠 [Mayor · Bug] edge-case · F-001")).toMatchObject({ severity: "warning", severityLabel: "Mayor" });
+    expect(withHeader("### 🟡 [Menor · Code Smell] log-noise · F-001")).toMatchObject({
+      severity: "info",
+      severityLabel: "Menor",
+    });
+    expect(withHeader("### 🔵 [Info · Code Smell] nit · F-001")).toMatchObject({ severity: "info", severityLabel: "Info" });
+  });
+
+  test("the pre-re-sync ⚠️ / ℹ️ headers still parse (old review_runs rows)", () => {
+    expect(withHeader("### ⚠️ [Media · Code Smell] x · F-001")).toMatchObject({ severity: "warning", severityLabel: "Mayor" });
+    expect(withHeader("### ℹ️ [Baja · Code Smell] x · F-001")).toMatchObject({ severity: "info", severityLabel: "Info" });
+  });
+
+  test("an emoji with no recognisable word still gets a label from the emoji", () => {
+    expect(withHeader("### 🟡 [Loose · Code Smell] x · F-001")?.severityLabel).toBe("Menor");
+  });
+
+  test("a posted comment header carries the emoji and the severity word", () => {
+    const finding = withHeader("### 🟠 [Mayor · Bug] missing-validation · F-007");
+    if (!finding) throw new Error("expected a finding");
+    expect(formatFindingAsComment(finding)).toContain("### 🟠 [Mayor · Bug] missing-validation · F-007");
+  });
+});
+
+describe("the 🚦 Quality Gate line", () => {
+  const REVIEW_WITH_GATE = `📈 CALIDAD: Fiabilidad=D Seguridad=A Mantenibilidad=B
+🚦 Quality Gate: FAILED
+
+### 🚨 [Crítico · Bug] npe · F-001
+Algo se rompe.
+
+📍 Ubicación: src/a.ts:10
+🎯 Confianza: 80`;
+
+  test("is parsed into selfReportedGate and stripped from the summary", () => {
+    const parsed = parseAnalysis(REVIEW_WITH_GATE);
+    expect(parsed.selfReportedGate).toBe("FAILED");
+    expect(parsed.summary).not.toContain("Quality Gate");
+    expect(parsed.grades).toEqual({ reliability: "D", security: "A", maintainability: "B" });
+  });
+
+  test("is absent (null) when the model did not write it", () => {
+    expect(parseAnalysis("📈 CALIDAD: Fiabilidad=A Seguridad=A Mantenibilidad=A\n\n✅ sin hallazgos").selfReportedGate).toBeNull();
+  });
+
+  test("the summary comment shows the computed gate, not the model's word", () => {
+    // The model said FAILED; the finding it listed is Crítico, so the computed gate agrees here.
+    const comment = formatSummaryComment(parseAnalysis(REVIEW_WITH_GATE), "2026-09-07", parseAnalysis(REVIEW_WITH_GATE).findings);
+    expect(comment).toContain("🚦 **Quality Gate:** ❌ FAILED");
+  });
+});
+
+describe("the trailing 👍 / 🗒️ sections", () => {
+  const REVIEW_WITH_AFTERWORD = `📈 CALIDAD: Fiabilidad=B Seguridad=A Mantenibilidad=A
+🚦 Quality Gate: PASSED
+
+### 🟡 [Menor · Code Smell] log-noise · F-001
+Un log de más.
+
+📍 Ubicación: src/a.ts:3
+🎯 Confianza: 40
+
+## 👍 Lo que está bien
+- Buena cobertura de tests en el módulo nuevo.
+- Nombres claros.
+
+## 🗒️ Notas
+- Requiere actualizar PROXY_CORE_BASE_URL en los ambientes. Ver el ticket 42.`;
+
+  test("strengths and notes are lifted into their own arrays", () => {
+    const parsed = parseAnalysis(REVIEW_WITH_AFTERWORD);
+    expect(parsed.strengths).toEqual(["Buena cobertura de tests en el módulo nuevo.", "Nombres claros."]);
+    expect(parsed.notes).toEqual(["Requiere actualizar PROXY_CORE_BASE_URL en los ambientes. Ver el ticket 42."]);
+  });
+
+  test("the afterword never bleeds into the last finding", () => {
+    // The "ticket 42" digit in the Notas bullet must not be read as F-001's confidence.
+    const [only] = parseAnalysis(REVIEW_WITH_AFTERWORD).findings;
+    if (!only) throw new Error("expected a finding");
+    expect(only.confidence).toBe(40);
+    expect(only.why).not.toContain("PROXY_CORE_BASE_URL");
+  });
+
+  test("both arrays are empty when the review has no such sections", () => {
+    const parsed = parseAnalysis("📈 CALIDAD: Fiabilidad=A Seguridad=A Mantenibilidad=A\n\n✅ nada que reportar");
+    expect(parsed.strengths).toEqual([]);
+    expect(parsed.notes).toEqual([]);
+  });
+
+  test("the summary comment appends the strengths block", () => {
+    const parsed = parseAnalysis(REVIEW_WITH_AFTERWORD);
+    const comment = formatSummaryComment(parsed, "2026-09-07", parsed.findings);
+    expect(comment).toContain("## 👍 Lo que está bien");
+    expect(comment).toContain("- Nombres claros.");
   });
 });

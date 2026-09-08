@@ -52,6 +52,22 @@ public sealed class PromptsTests
         Assert.Contains(fragment, Prompts.DefaultTicketReviewStandard, StringComparison.Ordinal);
 
     /// <summary>
+    /// The literals the WF-PR-REVIEWER re-sync added, in the shared block so both standards carry
+    /// them. Written here rather than trusted because <c>parseAnalysis.ts</c> and
+    /// <c>ReviewMemory.cs</c> match on them (<c>XLANG-001</c>): a reworded header is a silent break.
+    /// </summary>
+    [Theory]
+    [InlineData("🚦 Quality Gate: PASSED")]
+    [InlineData("## 👍 Lo que está bien")]
+    [InlineData("## 🗒️ Notas")]
+    [InlineData("🔴 for `Blocker`, 🚨 for `Crítico`, 🟠 for `Mayor`, 🟡 for `Menor`, 🔵 for `Info`")]
+    public void The_re_sync_literals_are_in_both_standards(string fragment)
+    {
+        Assert.Contains(fragment, Prompts.DefaultPrReviewStandard, StringComparison.Ordinal);
+        Assert.Contains(fragment, Prompts.DefaultTicketReviewStandard, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The two headers the standard asks for are the two constants the parser matches on.
     /// </summary>
     /// <remarks>

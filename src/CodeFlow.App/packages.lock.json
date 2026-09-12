@@ -30,9 +30,9 @@
       },
       "Porta.Pty": {
         "type": "Direct",
-        "requested": "[2.2.0, )",
-        "resolved": "2.2.0",
-        "contentHash": "Z4QL3MjWRir3GMdrdxInJW0EHSN/jBirf1KMrY74UXVH745pq32P4hZ5SRNXSQVLY2/PSMIU6YqHwXKW96ff7w==",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "wpKiHa3GOhgLpnu3bMAVJdAV+1Sek5bIgmuJrC04nl20T2VWBvoIq2+6aSOSora5pSRI9udo77F5IKLMcrk0rA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -90,9 +90,9 @@
     "net10.0/osx-arm64": {
       "Porta.Pty": {
         "type": "Direct",
-        "requested": "[2.2.0, )",
-        "resolved": "2.2.0",
-        "contentHash": "Z4QL3MjWRir3GMdrdxInJW0EHSN/jBirf1KMrY74UXVH745pq32P4hZ5SRNXSQVLY2/PSMIU6YqHwXKW96ff7w==",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "wpKiHa3GOhgLpnu3bMAVJdAV+1Sek5bIgmuJrC04nl20T2VWBvoIq2+6aSOSora5pSRI9udo77F5IKLMcrk0rA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }
@@ -117,9 +117,9 @@
     "net10.0/win-x64": {
       "Porta.Pty": {
         "type": "Direct",
-        "requested": "[2.2.0, )",
-        "resolved": "2.2.0",
-        "contentHash": "Z4QL3MjWRir3GMdrdxInJW0EHSN/jBirf1KMrY74UXVH745pq32P4hZ5SRNXSQVLY2/PSMIU6YqHwXKW96ff7w==",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "wpKiHa3GOhgLpnu3bMAVJdAV+1Sek5bIgmuJrC04nl20T2VWBvoIq2+6aSOSora5pSRI9udo77F5IKLMcrk0rA==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
         }

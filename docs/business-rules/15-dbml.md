@@ -5,6 +5,7 @@
 - `src/CodeFlow.App/Dbml/` — `DbmlCommands.cs`, `DbmlDocuments.cs`, `DbmlLayoutStore.cs`,
   `DbmlTablePosition.cs`, `DbmlJsonContext.cs`
 - `renderer/src/lib/dbml/` — `parse.ts` (the `@dbml/core` boundary), `model.ts`, `layout.ts`,
+  `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`,
   `schema.ts` (the Editor preview's adapter), `documentPath.ts`
 - `renderer/src/state/dbmlStore.ts`
 - `renderer/src/components/dbml/` — `DbmlView.tsx`, `NewDbmlModal.tsx`
@@ -216,18 +217,92 @@ the running app.
 ---
 
 ### DBML-009 A relationship line attaches to the column it names
-**Implementation**: `renderer/src/lib/dbml/edges.ts`
-**Behaviour**: Each reference whose two tables are on the canvas becomes one segment, anchored at the
-vertical centre of its column's row — `header + index × row + row / 2` — and leaving each card from the
-side that faces the other. Reading which column references which is the point; a line to the middle of
-the card, which is what the Editor preview draws, cannot say it.
-**Inputs / outputs**: `(refs, tables by key, rects by key)` → `[{ id, from: {x, y}, to: {x, y} }]`.
-**Edge cases**: a column the card does not show anchors at the header. A reference to a table that is
-not on the canvas draws nothing.
+**Implementation**: `renderer/src/lib/dbml/edges.ts` (`columnAnchorY`)
+**Behaviour**: A line meets a card at the vertical centre of the row of the column its reference names —
+`header + index × row + row / 2`. Reading which column references which is the point; a line to the
+middle of the card, which is what the Editor preview draws, cannot say it. `DBML-012` builds the line
+from these anchors.
+**Inputs / outputs**: `(rect, table, column name)` → `y`.
+**Edge cases**: a column the card does not show anchors at the header. A composite reference anchors at
+its first column.
+**Frontend dependency**: `renderer/src/lib/dbml/routing.ts`.
+**Markers**: none.
+
+---
+
+### DBML-010 Table names become nouns in the language they are written in
+**Implementation**: `renderer/src/lib/dbml/inflect.ts`
+**Behaviour**: `splitWords` reads snake, kebab, camel and Pascal case alike. Singular and plural follow
+Spanish or English rules plus short exception lists; Spanish gender comes from the ending plus
+exception lists. `nounFor` keeps a name that already reads as plural as its own plural (`animal_vacunas`
+stays "animal vacunas"); English inflects only the last word, its head; Spanish singularises every word
+and takes the gender from the first. `guessLanguage` scores the schema's table **and column** names for
+Spanish and English markers and falls back to the interface language on a tie — the nouns must follow
+the names, since Spanish rules never turn `users` into "user".
+**Inputs / outputs**: identifier + `"es" | "en"` → `{ singular, plural, gender }`.
+**Edge cases**: a Spanish `-e` singular after a consonant cluster takes only `-s` (`detalles`, `nombres`,
+`clientes`); `-iones` singularises with its accent (`canciones` → "canción"); a final-syllable stress
+mark falls away in the plural (`almacén` → "almacenes").
+**Frontend dependency**: `renderer/src/lib/dbml/relationPhrase.ts`, `DbmlCanvas.tsx`.
+**Markers**: none. Heuristic by design — table names are a narrow vocabulary, and a wrong guess costs an
+awkward word in a tooltip, never a wrong diagram. Some words take the rule's answer rather than the
+right one (`meses` → "mese", `sedes` → "sed").
+
+---
+
+### DBML-011 Every relationship reads in both directions
+**Implementation**: `renderer/src/lib/dbml/relationPhrase.ts` · `renderer/src/lib/i18n/translations.ts` (`dbml.relation.*`)
+**Behaviour**: One-to-many (`>` or `<`): "Cada {uno} puede tener muchos {muchos}" and "Cada {muchos}
+pertenece a un {uno}" — or "puede pertenecer a" when any foreign-key column is nullable and not a
+primary key. One-to-one (`-`): the side written first belongs to the other, which has at most one of it.
+Many-to-many (`<>`): "puede relacionarse con muchos" in both directions. The quantity word agrees with
+its noun's gender through keys of its own (`un`/`una`, `muchos`/`muchas`; English uses "one"/"many" for
+both), so the wording stays in `translations.ts` while this module only chooses the sentence and
+inflects its nouns.
+**Inputs / outputs**: `(ref, tables by key, names language)` → `{ kind, sentences: [two] }`, rendered
+through the caller's translator.
+**Edge cases**: a foreign-key column the table does not declare is treated as required — claiming an
+optionality the document does not state would be the worse mistake. A reference to a table not in the
+document yields nothing.
 **Frontend dependency**: `DbmlCanvas.tsx`.
-**Markers**: none. Known limit, stated rather than discovered: these are straight segments, so a
-self-reference crosses its own card and lines can cross cards between two columns. Orthogonal routing
-and the hover that explains a relationship in words replace this in the next phase.
+**Markers**: none.
+
+---
+
+### DBML-012 Relationship lines are orthogonal and never run through the two cards they join
+**Implementation**: `renderer/src/lib/dbml/routing.ts`
+**Behaviour**: A line leaves its card horizontally at the anchor, turns once into a vertical lane and
+enters the other card horizontally. When the cards are at least `2 × STUB` (48) apart horizontally the
+lane is in the gap and the ends are the facing sides; otherwise — overlapping horizontally, too close to
+turn, or a table referencing itself — both ends leave on the right and the lane runs outside both cards.
+Lines sharing a gap are spread 12 px apart around its centre, ordered by their starting row so
+neighbours do not swap and cross; lanes outside stack outward. Corners are rounded (radius 8, never more
+than half a segment). Each end carries its cardinality outside the card: a bar at a `1`, a crow's foot
+at a `*`.
+**Inputs / outputs**: `(refs, tables by key, rects by key)` → `[{ id, from, to, points, d, label, markers }]`.
+**Edge cases**: rows that line up give a single straight segment. A reference to a table not on the
+canvas draws nothing.
+**Frontend dependency**: `DbmlCanvas.tsx`.
+**Markers**: none. Known limit: a lane between two cards can pass behind a third card placed inside that
+gap by hand. Cards are drawn above lines, so the line is hidden there rather than drawn over the card.
+
+---
+
+### DBML-013 A relationship explains itself on hover or focus, and is silent at rest
+**Implementation**: `renderer/src/components/dbml/DbmlCanvas.tsx`
+**Behaviour**: Each line has an invisible 14 px hit stroke. With the pointer over it — or keyboard focus
+on it, since every line is in the tab order and labelled with its two sentences for screen readers — the
+line thickens, the others dim, the two tables it joins take the accent border, and a tooltip shows
+`from.columns → to.columns`, both sentences (`DBML-011`) and the `ON DELETE` / `ON UPDATE` actions when
+the reference declares them. Nothing is shown at rest. The tooltip follows the pointer; for keyboard
+focus it sits at the middle of the line's lane. Nouns are inflected in the schema's guessed language;
+the sentences around them follow the interface language.
+**Inputs / outputs**: none on the wire.
+**Edge cases**: no tooltip appears while a card is being dragged or the background panned. The tooltip is
+kept inside the canvas, flipping above the pointer near the bottom edge. A reference edited away while
+its tooltip is open closes it.
+**Frontend dependency**: none outward.
+**Markers**: none.
 
 ## Test coverage
 
@@ -238,7 +313,10 @@ and the hover that explains a relationship in words replace this in the next pha
 | `parse.test.ts` (8) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core` |
 | `schema.test.ts` (3) | `renderer/src/lib/dbml/schema.ts` | adapter smoke |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |
-| `edges.test.ts` (4) | `renderer/src/lib/dbml/edges.ts` | pure |
+| `edges.test.ts` (2) | `renderer/src/lib/dbml/edges.ts` | pure |
+| `routing.test.ts` (12) | `renderer/src/lib/dbml/routing.ts` | pure — shapes, lanes, markers |
+| `inflect.test.ts` (56) | `renderer/src/lib/dbml/inflect.ts` | pure — case tables in both languages |
+| `relationPhrase.test.ts` (8) | `renderer/src/lib/dbml/relationPhrase.ts` | pure — sentence choice and agreement |
 | `viewport.test.ts` (5) | `renderer/src/lib/dbml/viewport.ts` | pure |
 | `documentPath.test.ts` (12) | `renderer/src/lib/dbml/documentPath.ts` | pure |
 | `dbmlStore.test.ts` (18) | `renderer/src/state/dbmlStore.ts` | store, `lib/ipc/commands` mocked |

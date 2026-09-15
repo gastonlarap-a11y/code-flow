@@ -57,6 +57,8 @@ vi.mock("../lib/ipc/commands", () => {
   const ok = <T>(value: T) => vi.fn(() => Promise.resolve(value));
 
   return {
+    // Answered first by `setRepoPath`, before any of the reads below (GIT-039).
+    isGitRepo: ok(true),
     getStatus: ok(null),
     getWorkingDiff: ok([]),
     getStagedDiff: ok([]),
@@ -126,6 +128,68 @@ beforeEach(() => {
   useRepoStore.setState(initial, true);
 });
 
+describe("a project that is not a git repository", () => {
+  test("no git command is called at all", async () => {
+    // GIT-039, and the reason the whole gate exists: a project is any folder the user picked, and
+    // each of these seven reads opens a repository — so on a plain folder every one of them threw
+    // and raised its own error toast, over a sidebar left on its skeleton.
+    api.isGitRepo.mockResolvedValue(false);
+
+    await useRepoStore.getState().setRepoPath("/some/plain/folder");
+
+    expect(api.isGitRepo).toHaveBeenCalledWith("/some/plain/folder");
+    for (const command of [
+      api.getStatus,
+      api.listBranches,
+      api.listCommits,
+      api.listUnpushedCommits,
+      api.listStashes,
+      api.listRemotes,
+      api.isMerging,
+    ]) {
+      expect(command).not.toHaveBeenCalled();
+    }
+    expect(toasts).toEqual([]);
+    expect(useRepoStore.getState().isGitRepo).toBe(false);
+    // The flag the sidebar's skeleton hangs off has to come down here too, or the folder looks
+    // like it is still loading forever.
+    expect(useRepoStore.getState().projectLoading).toBe(false);
+  });
+
+  test("a repository still refreshes normally", async () => {
+    await useRepoStore.getState().setRepoPath("/repo/a");
+
+    expect(useRepoStore.getState().isGitRepo).toBe(true);
+    expect(api.getStatus).toHaveBeenCalledWith("/repo/a");
+  });
+
+  test("a sidecar that cannot answer is treated as a repository", async () => {
+    // Assuming "not a repo" on failure would hide the history views from someone whose repository
+    // is fine. The reads that follow report their own failures where they happen.
+    api.isGitRepo.mockRejectedValue(new Error("core is down"));
+
+    await useRepoStore.getState().setRepoPath("/repo/a");
+
+    expect(useRepoStore.getState().isGitRepo).toBe(true);
+    expect(api.getStatus).toHaveBeenCalled();
+  });
+
+  test("a switch that lands while the check is in flight does not write the stale answer", async () => {
+    // Same race `setRepoPath` already guards for its refreshes: the check is a round trip, and the
+    // user can pick another project inside it.
+    const check = deferred<boolean>();
+    api.isGitRepo.mockReturnValueOnce(check.promise);
+
+    const toPlainFolder = useRepoStore.getState().setRepoPath("/some/plain/folder");
+    await useRepoStore.getState().setRepoPath("/repo/a");
+    check.release(false);
+    await toPlainFolder;
+
+    expect(useRepoStore.getState().repoPath).toBe("/repo/a");
+    expect(useRepoStore.getState().isGitRepo).toBe(true);
+  });
+});
+
 describe("a refresh that fails", () => {
   test("reports the failure and clears the loading flag", async () => {
     // The shape of the real bug: one broken remote, one rejected command, and the sidebar
@@ -165,11 +229,15 @@ describe("a refresh that resolves after the repo changed", () => {
     // Project A's branches resolve only once B has been selected. Before the guard, A's answer
     // landed on top of B's, silently, until something forced another refresh.
     const inFlight = deferred<BranchInfo[]>();
-    api.listBranches.mockImplementationOnce(() => inFlight.promise);
+    // Keyed on the repo rather than on call order: `setRepoPath` now awaits `is_git_repo` before it
+    // reaches this command (GIT-039), so "the first call" is no longer A's — with `…Once`, B took
+    // the deferred promise and the switch to B never resolved.
+    api.listBranches.mockImplementation((repoPath) =>
+      repoPath === "/repo/a" ? inFlight.promise : Promise.resolve([branch("from-b")]),
+    );
 
     const switchingToA = useRepoStore.getState().setRepoPath("/repo/a");
 
-    api.listBranches.mockResolvedValue([branch("from-b")]);
     await useRepoStore.getState().setRepoPath("/repo/b");
 
     inFlight.release([branch("from-a")]);

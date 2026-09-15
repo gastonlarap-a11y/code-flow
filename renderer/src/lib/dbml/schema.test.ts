@@ -4,7 +4,7 @@
 //   never the useless `[object Object]` that `String(e)` would produce.
 import { describe, expect, it } from "vitest";
 
-import { parseDbml } from "./dbml";
+import { parseDbml } from "./schema";
 
 const FIXTURE = `
 Table users {

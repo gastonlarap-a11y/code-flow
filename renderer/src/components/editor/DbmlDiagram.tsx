@@ -1,6 +1,6 @@
 import { forwardRef, useLayoutEffect, useRef, useState } from "react";
 import { KeyRound, Table2 } from "lucide-react";
-import type { DbmlSchema } from "../../lib/dbml";
+import type { DbmlSchema } from "../../lib/dbml/schema";
 import { useT } from "../../state/languageStore";
 import { EmptyState } from "../common/EmptyState";
 

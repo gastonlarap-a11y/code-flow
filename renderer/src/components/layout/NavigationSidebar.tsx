@@ -4,7 +4,7 @@ import { useRepoStore } from "../../state/repoStore";
 import { usePrStore } from "../../state/prStore";
 import { useWorkspaceStore } from "../../state/workspaceStore";
 import { useT } from "../../state/languageStore";
-import { reachableInScope, type AppModule, type RegisteredModule } from "../../lib/modules";
+import { availableInScope, type AppModule, type RegisteredModule } from "../../lib/modules";
 import { navBadges } from "../../lib/ui/navBadges";
 import { uncommittedCount } from "../../lib/fileStatus";
 import { CARD } from "../common/panelChrome";
@@ -141,10 +141,14 @@ export function NavigationSidebar() {
   );
   const badges = navBadges({ uncommittedChanges: uncommitted, openPrs });
 
+  // A plain folder is a supported project (GIT-039), and the history views have nothing to show in
+  // one, so they leave the list rather than sitting there disabled.
+  const isGitRepo = useRepoStore((s) => s.isGitRepo);
+
   const groups = [
-    { scope: "app" as const, modules: reachableInScope("app") },
-    { scope: "repo" as const, modules: reachableInScope("repo") },
-    { scope: "workspace" as const, modules: reachableInScope("workspace") },
+    { scope: "app" as const, modules: availableInScope("app", isGitRepo) },
+    { scope: "repo" as const, modules: availableInScope("repo", isGitRepo) },
+    { scope: "workspace" as const, modules: availableInScope("workspace", isGitRepo) },
   ];
 
   return (

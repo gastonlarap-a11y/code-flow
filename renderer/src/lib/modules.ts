@@ -1,4 +1,13 @@
-import { Code2, GitBranch, History, Home, Send, SquareKanban, type LucideIcon } from "lucide-react";
+import {
+  Code2,
+  Database,
+  GitBranch,
+  History,
+  Home,
+  Send,
+  SquareKanban,
+  type LucideIcon,
+} from "lucide-react";
 import type { TranslationKey } from "./i18n/translations";
 
 /**
@@ -49,13 +58,25 @@ export interface AppModule {
    * you can actually open.
    */
   comingSoon?: boolean;
+  /**
+   * Needs the selected project to be a git repository.
+   *
+   * A project is any folder the user picked — `create_project` validates nothing — so a plain
+   * directory is a supported thing to open, and `graph` and `changes` have nothing to show in one.
+   * They are *hidden* there rather than disabled: a disabled control says "this could work",
+   * and for a folder with no history it never will. `editor` and `dbml` are deliberately unmarked;
+   * they read files, not history.
+   */
+  requiresGit?: boolean;
 }
 
 export const APP_MODULES = [
   { id: "home", icon: Home, labelKey: "home.title", scope: "app" },
-  { id: "graph", icon: History, labelKey: "tabbar.graph", scope: "repo" },
-  { id: "changes", icon: GitBranch, labelKey: "tabbar.changes", scope: "repo" },
+  { id: "graph", icon: History, labelKey: "tabbar.graph", scope: "repo", requiresGit: true },
+  { id: "changes", icon: GitBranch, labelKey: "tabbar.changes", scope: "repo", requiresGit: true },
   { id: "editor", icon: Code2, labelKey: "tabbar.editor", scope: "repo" },
+  // No `requiresGit`: a schema document is a file in the folder, and reading one needs no history.
+  { id: "dbml", icon: Database, labelKey: "tabbar.dbml", scope: "repo" },
   { id: "workitems", icon: SquareKanban, labelKey: "tabbar.workitems", scope: "repo" },
   { id: "api", icon: Send, labelKey: "tabbar.api", scope: "workspace" },
 ] as const satisfies readonly AppModule[];
@@ -108,3 +129,25 @@ export const REACHABLE_MODULES: readonly RegisteredModule[] = APP_MODULES.filter
 
 /** Cycling order for the next/previous-view shortcuts: registry order, minus what is not built. */
 export const MODULE_ORDER: readonly ModuleId[] = REACHABLE_MODULES.map((m) => m.id);
+
+/**
+ * The modules a project in this state can actually open.
+ *
+ * `isGitRepo === null` means "not resolved yet" and keeps everything listed: the answer arrives one
+ * IPC round-trip after the project is selected, and hiding two entries for that moment reads as the
+ * navigation flickering.
+ */
+export function availableModules(isGitRepo: boolean | null): readonly RegisteredModule[] {
+  if (isGitRepo !== false) return REACHABLE_MODULES;
+  // `in` rather than a plain read, for the same reason as `REACHABLE_MODULES`: `as const` leaves
+  // the property off the entries that omit it.
+  return REACHABLE_MODULES.filter((m) => !("requiresGit" in m && m.requiresGit));
+}
+
+/** What the navigation lists for one scope, given what the selected project turned out to be. */
+export function availableInScope(
+  scope: AppModule["scope"],
+  isGitRepo: boolean | null,
+): readonly RegisteredModule[] {
+  return availableModules(isGitRepo).filter((m) => m.scope === scope);
+}

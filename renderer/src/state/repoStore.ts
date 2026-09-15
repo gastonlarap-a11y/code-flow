@@ -20,6 +20,16 @@ import type {
 
 interface RepoState {
   repoPath: string | null;
+  /**
+   * Whether `repoPath` is inside a git working tree — `null` while it is still being resolved
+   * (GIT-039).
+   *
+   * A project is any folder the user pointed at; `create_project` validates nothing. Before this
+   * existed, selecting a plain folder fired all seven reads of `refreshAll`, every one of which
+   * throws `RepositoryNotFoundException`, and the user got a burst of error toasts over a sidebar
+   * stuck on its skeleton. The views that need git read this to stay out of the way instead.
+   */
+  isGitRepo: boolean | null;
   status: RepoStatusInfo | null;
   branches: BranchInfo[];
   commits: CommitInfo[];
@@ -375,10 +385,12 @@ export const useRepoStore = create<RepoState>((set, get) => ({
   commitsLoading: false,
   projectLoading: false,
   refreshSeq: 0,
+  isGitRepo: null,
 
   setRepoPath: async (path) => {
     set({
       repoPath: path,
+      isGitRepo: null,
       projectLoading: Boolean(path),
       status: null,
       branches: [],
@@ -397,18 +409,34 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       merging: false,
       conflicts: [],
     });
-    if (path) {
-      try {
-        await get().refreshAll();
-      } finally {
-        // In a `finally` because this is the only thing that clears the sidebar's skeleton. Each
-        // refresher reports its own failures now, but a rejection that escapes anyway must not
-        // leave the project looking like it is still loading forever.
-        //
-        // Guards against a stale resolution: if the user already switched to another repo
-        // while this fetch was in flight, don't clear the new repo's loading state.
-        if (get().repoPath === path) set({ projectLoading: false });
-      }
+    if (!path) return;
+
+    // Asked before anything else: the seven reads below all open a repository, so on a plain
+    // folder they would each throw and each raise its own toast. On failure we assume `true` and
+    // carry on — a sidecar that cannot answer this cannot serve `refreshAll` either, and that
+    // failure is already reported where it happens; treating it as "not a repo" would instead
+    // hide the git views from someone whose repository is perfectly fine.
+    const isGit = await api.isGitRepo(path).catch(() => true);
+
+    // The user may have switched projects while that was in flight; the newer call owns the state.
+    if (get().repoPath !== path) return;
+    set({ isGitRepo: isGit });
+
+    if (!isGit) {
+      set({ projectLoading: false });
+      return;
+    }
+
+    try {
+      await get().refreshAll();
+    } finally {
+      // In a `finally` because this is the only thing that clears the sidebar's skeleton. Each
+      // refresher reports its own failures now, but a rejection that escapes anyway must not
+      // leave the project looking like it is still loading forever.
+      //
+      // Guards against a stale resolution: if the user already switched to another repo
+      // while this fetch was in flight, don't clear the new repo's loading state.
+      if (get().repoPath === path) set({ projectLoading: false });
     }
   },
 

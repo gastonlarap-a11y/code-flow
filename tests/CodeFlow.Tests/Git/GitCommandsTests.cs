@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using CodeFlow.Git;
 using CodeFlow.Ipc;
@@ -9,7 +10,7 @@ using Xunit;
 namespace CodeFlow.Tests.Git;
 
 /// <summary>
-/// The command surface itself: that all 46 names exist, spelled exactly as the contract says, and
+/// The command surface itself: that all 47 names exist, spelled exactly as the contract says, and
 /// that errors reach the frontend unwrapped.
 /// </summary>
 public sealed class GitCommandsTests : IDisposable
@@ -23,12 +24,13 @@ public sealed class GitCommandsTests : IDisposable
     /// Every command this domain owns, from <c>01-ipc-surface.md</c>.
     /// </summary>
     /// <remarks>
-    /// 41 from the implementation plus 3 from the implementation. Written
+    /// 41 from the implementation plus 3 from the implementation, plus `is_git_repo` (GIT-039). Written
     /// out rather than derived: a typo in a name is invisible until the feature is used in the
     /// real app, where it surfaces as "unknown command" and nothing else.
     /// </remarks>
     private static readonly string[] Expected =
     [
+        "is_git_repo",
         "get_status", "list_commits", "list_unpushed_commits", "list_branches", "create_branch",
         "delete_branch", "checkout_local_branch", "checkout_detached", "checkout_remote_tracking",
         "list_stashes", "stash_save", "stash_apply", "stash_pop", "stash_drop", "rename_stash",
@@ -43,11 +45,11 @@ public sealed class GitCommandsTests : IDisposable
     ];
 
     [Fact]
-    public void All_forty_six_commands_are_registered_under_their_contract_names()
+    public void All_forty_seven_commands_are_registered_under_their_contract_names()
     {
         var registry = Registry();
 
-        Assert.Equal(46, Expected.Length);
+        Assert.Equal(47, Expected.Length);
         Assert.Equal(
             Expected.OrderBy(n => n, StringComparer.Ordinal),
             registry.Names.OrderBy(n => n, StringComparer.Ordinal));
@@ -89,6 +91,49 @@ public sealed class GitCommandsTests : IDisposable
         finally
         {
             Directory.Delete(notARepository, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_folder_that_is_not_a_repository_answers_false_instead_of_throwing()
+    {
+        // GIT-039. This is the whole point of the command: every other git command in this file
+        // throws on such a folder, and the frontend calls this one first so it never fires them.
+        var registry = Registry();
+        Assert.True(registry.TryGet("is_git_repo", out var handler));
+
+        var plainFolder = Path.Combine(Path.GetTempPath(), $"codeflow-plain-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(plainFolder);
+
+        try
+        {
+            var reply = await handler(Args(new { path = plainFolder }), TestContext.Current.CancellationToken);
+
+            Assert.Equal("false", Encoding.UTF8.GetString(reply.Span));
+        }
+        finally
+        {
+            Directory.Delete(plainFolder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_repository_and_any_folder_inside_it_both_answer_true()
+    {
+        // Discover, not IsValid: a subfolder resolves to its containing repository, which is what
+        // the other commands do when handed that same path.
+        using var repo = new TempRepo();
+        repo.Write("src/a.txt", "one\n");
+        repo.Commit("initial", "src/a.txt");
+
+        var registry = Registry();
+        Assert.True(registry.TryGet("is_git_repo", out var handler));
+
+        foreach (var path in new[] { repo.Path, Path.Combine(repo.Path, "src") })
+        {
+            var reply = await handler(Args(new { path }), TestContext.Current.CancellationToken);
+
+            Assert.Equal("true", Encoding.UTF8.GetString(reply.Span));
         }
     }
 

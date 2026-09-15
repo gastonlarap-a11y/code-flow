@@ -1,7 +1,7 @@
 namespace CodeFlow.Storage;
 
 /// <summary>
-/// The canonical schema: 18 tables and 7 indexes, applied as one batch on every startup.
+/// The canonical schema: 22 tables and 10 indexes, applied as one batch on every startup.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -337,5 +337,21 @@ internal static class Schema
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_api_cookies_key
             ON api_cookies (workspace_id, domain, path, name);
+
+        -- Where the user dragged each table of a schema document (DBML-005). Keyed on the
+        -- project-relative path, so moving the project folder keeps the layout, and cascading
+        -- from projects, so removing the project removes its layouts. Only positions a person set
+        -- are stored: every other table is placed by the auto-layout each time the document renders.
+        CREATE TABLE IF NOT EXISTS dbml_layouts (
+            id         TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            rel_path   TEXT NOT NULL,
+            table_key  TEXT NOT NULL,
+            x          REAL NOT NULL,
+            y          REAL NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dbml_layouts_key
+            ON dbml_layouts (project_id, rel_path, table_key);
         """;
 }

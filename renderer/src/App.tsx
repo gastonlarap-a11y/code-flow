@@ -25,7 +25,7 @@ import { ToastContainer } from "./components/common/Toast";
 import { ConfirmModal } from "./components/common/ConfirmModal";
 import { useThemeStore } from "./state/themeStore";
 import { useUiStore, type MainView } from "./state/uiStore";
-import { moduleById, modulesInScope, type ModuleId } from "./lib/modules";
+import { availableModules, moduleById, modulesInScope, type ModuleId } from "./lib/modules";
 import { useWorkspaceStore } from "./state/workspaceStore";
 import { useLayoutStore } from "./state/layoutStore";
 import { useRepoStore } from "./state/repoStore";
@@ -56,6 +56,9 @@ const EditorView = lazyRetry(() =>
   import("./components/editor/EditorView").then((m) => ({ default: m.EditorView })),
 );
 const ApiView = lazyRetry(() => import("./components/api/ApiView").then((m) => ({ default: m.ApiView })));
+// Carries `@dbml/core` — 15 MB, four times Monaco — plus a Monaco instance of its own. Only a user
+// who opens the schema designer pays for either.
+const DbmlView = lazyRetry(() => import("./components/dbml/DbmlView").then((m) => ({ default: m.DbmlView })));
 const SettingsView = lazyRetry(() =>
   import("./components/settings/SettingsView").then((m) => ({ default: m.SettingsView })),
 );
@@ -78,6 +81,7 @@ const MODULE_VIEWS: Record<ModuleId, () => ReactElement> = {
   graph: () => <GraphView />,
   changes: () => <ChangesPanel />,
   editor: () => <EditorView />,
+  dbml: () => <DbmlView />,
   workitems: () => <WorkItemsView />,
   api: () => <ApiView />,
 };
@@ -167,6 +171,7 @@ export default function App() {
   const project = useWorkspaceStore((s) => s.activeProject());
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setRepoPath = useRepoStore((s) => s.setRepoPath);
+  const isGitRepo = useRepoStore((s) => s.isGitRepo);
   const autoFetchSeconds = usePreferencesStore((s) => s.autoFetchSeconds);
   const resolvedTheme = useThemeStore((s) => s.resolved);
   const accentId = useAccentStore((s) => s.accentId);
@@ -244,6 +249,14 @@ export default function App() {
     void setRepoPath(project?.local_path ?? null);
   }, [project?.local_path, setRepoPath]);
 
+  // Switching to a plain folder while a history view is open would leave that view on screen with
+  // the navigation no longer listing it — reachable, empty, and with no way back to it (GIT-039).
+  useEffect(() => {
+    if (isGitRepo !== false) return;
+    if (availableModules(isGitRepo).some((m) => m.id === activeView)) return;
+    useUiStore.getState().setActiveView("editor");
+  }, [isGitRepo, activeView]);
+
   // The API client's collections, environments, history and cookies belong to the workspace, so
   // a switch has to swap them the way the repo above swaps. Only the id is passed: the store
   // owns the teardown of what the previous workspace left running (live WebSocket/MQTT
@@ -316,7 +329,9 @@ export default function App() {
   // Background auto-fetch with a live countdown, gated on a user-configured interval
   // (min 10s, 0 = off). Ticks every second so the status bar can show "next fetch in Ns".
   useEffect(() => {
-    if (!autoFetchSeconds || !project?.local_path) {
+    // `isGitRepo === false` gates it for the same reason `refreshAll` is gated: fetching a folder
+    // with no remote — with no repository at all — is an error on a timer (GIT-039).
+    if (!autoFetchSeconds || !project?.local_path || isGitRepo === false) {
       useFetchTimerStore.getState().setRemaining(null);
       return;
     }
@@ -332,7 +347,7 @@ export default function App() {
       }
     }, 1000);
     return () => clearInterval(id);
-  }, [autoFetchSeconds, project?.local_path]);
+  }, [autoFetchSeconds, project?.local_path, isGitRepo]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">

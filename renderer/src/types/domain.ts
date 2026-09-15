@@ -540,3 +540,15 @@ export interface TicketCoverageWire {
   out_of_scope: string;
   summary: string;
 }
+
+/**
+ * Where a person dragged one table of a schema document (DBML-005).
+ *
+ * snake_case in both directions: `dbml_load_layout` returns these and `dbml_save_positions` takes
+ * them back unchanged. `table_key` is `schema.table` in lower case (`lib/dbml/parse.ts` `tableKey`).
+ */
+export interface DbmlTablePosition {
+  table_key: string;
+  x: number;
+  y: number;
+}

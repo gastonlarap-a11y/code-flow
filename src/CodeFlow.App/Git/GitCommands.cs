@@ -6,7 +6,7 @@ using CodeFlow.Workspaces;
 namespace CodeFlow.Git;
 
 /// <summary>
-/// The 44 git and checkpoint commands.
+/// The 47 git and checkpoint commands.
 /// See <c>docs/business-rules/04-git.md</c>.
 /// </summary>
 /// <remarks>
@@ -64,6 +64,15 @@ public static class GitCommands
                 return Unit();
             })
             // ---------- status ----------
+            //
+            // The one command in this file that a non-repository folder is expected to reach: every
+            // other one here opens a repository and throws without it, which is precisely what this
+            // lets the frontend avoid (GIT-039).
+            .Add("is_git_repo", (p, ct) =>
+            {
+                var path = Arg(p, "path");
+                return Run(() => RepoStatus.IsRepository(path), GitJsonContext.Default.Boolean, ct);
+            })
             .Add("get_status", (p, ct) =>
             {
                 var repoPath = Arg(p, "repoPath");

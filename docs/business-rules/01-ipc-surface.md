@@ -19,9 +19,9 @@ Established by parsing the tree, not by reading it:
 
 | Set | Count | Source |
 |---|---|---|
-| Registered in `generate_handler!` | 220 | `src/CodeFlow.App/Program.cs` |
-| Defined with a registered command | 220 | all `commands/*.rs` |
-| Distinct commands invoked by the frontend | 219 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts` |
+| Registered in `generate_handler!` | 225 | `src/CodeFlow.App/Program.cs` |
+| Defined with a registered command | 225 | all `commands/*.rs` |
+| Distinct commands invoked by the frontend | 224 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts` |
 | Registered but never invoked | 1 | `debug_is_running` — `DEAD` |
 | Invoked but not registered | 0 | — |
 | Duplicate command names | 0 | — |
@@ -121,10 +121,11 @@ dependencies; it is not part of the payload.
 | `move_project_to_workspace`<br><sub>`src/CodeFlow.App/Workspaces/WorkspaceCommands.cs`</sub> | `id: string`<br>`workspace_id: string` | `Result&lt;(), string&gt;` | State | `moveProjectToWorkspace` |
 | `update_project_color`<br><sub>`src/CodeFlow.App/Workspaces/WorkspaceCommands.cs`</sub> | `id: string`<br>`color: string` | `Result&lt;(), string&gt;` | State | `updateProjectColor` |
 
-### `src/CodeFlow.App/Git/GitCommands.cs` — 41 commands → [04-git](04-git.md)
+### `src/CodeFlow.App/Git/GitCommands.cs` — 42 commands → [04-git](04-git.md)
 
 | Command | Caller parameters | Returns | Injected | TS wrapper |
 |---|---|---|---|---|
+| `is_git_repo`<br><sub>`src/CodeFlow.App/Git/GitCommands.cs`</sub> | `path: string` | `Result&lt;bool, string&gt;` | — | `isGitRepo` |
 | `get_status`<br><sub>`src/CodeFlow.App/Git/GitCommands.cs`</sub> | `repo_path: string` | `Result&lt;repo.RepoStatusInfo, string&gt;` | — | `getStatus` |
 | `list_commits`<br><sub>`src/CodeFlow.App/Git/GitCommands.cs`</sub> | `repo_path: string`<br>`all_refs: bool`<br>`limit: int` | `Result&lt;Vec&lt;graph.CommitInfo&gt;, string&gt;` | — | `listCommits` |
 | `list_unpushed_commits`<br><sub>`src/CodeFlow.App/Git/GitCommands.cs`</sub> | `repo_path: string` | `Result&lt;Vec&lt;graph.CommitInfo&gt;, string&gt;` | — | `listUnpushedCommits` |
@@ -327,6 +328,15 @@ dependencies; it is not part of the payload.
 |---|---|---|---|---|
 | `start_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | AppHandle, State | `startWatching` |
 | `stop_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | State | `stopWatching` |
+
+### `src/CodeFlow.App/Dbml/DbmlCommands.cs` — 4 commands → [15-dbml](15-dbml.md)
+
+| Command | Caller parameters | Returns | Injected | TS wrapper |
+|---|---|---|---|---|
+| `dbml_list_documents`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `root_path: string` | `Result&lt;Vec&lt;string&gt;, string&gt;` | — | `dbmlListDocuments` |
+| `dbml_load_layout`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string` | `Result&lt;Vec&lt;DbmlTablePosition&gt;, string&gt;` | State | `dbmlLoadLayout` |
+| `dbml_save_positions`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string`<br>`positions: Vec&lt;DbmlTablePosition&gt;` | `Result&lt;(), string&gt;` | State | `dbmlSavePositions` |
+| `dbml_clear_layout`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string` | `Result&lt;(), string&gt;` | State | `dbmlClearLayout` |
 
 ### `src/CodeFlow.App/Terminal/TerminalCommands.cs` — 4 commands → [11-files-search-terminal](11-files-search-terminal.md)
 

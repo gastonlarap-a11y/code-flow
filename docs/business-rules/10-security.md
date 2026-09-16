@@ -41,6 +41,7 @@ exactly as the code builds them:
 | `ado_pat_key(org: string)` | `src/CodeFlow.App/Security/CredentialStore.cs` | `format!("ado-pat:{org}")` | `ado-pat:myorg` |
 | `github_token_key(host: string)` | `src/CodeFlow.App/Security/CredentialStore.cs` | `format!("github-token:{host}")` | `github-token:github.com` |
 | `ai_api_key(provider: string)` | `src/CodeFlow.App/Security/CredentialStore.cs` | `format!("ai-api-key:{provider}")` | `ai-api-key:openai` |
+| `db_password_key(connectionId: string)` | `src/CodeFlow.App/Security/CredentialStore.cs` | `format!("db-password:{connectionId}")` | `db-password:26946c6f-…` |
 
 Azure DevOps is keyed per **org** (one PAT authenticates against a specific org); GitHub is
 keyed per **host** (one token authenticates against every repo/org the account can see on that
@@ -329,12 +330,19 @@ service name, so any C# port must use the exact same string to read pre-existing
 
 ### SEC-002 Deterministic per-credential key formats
 **Implementation**: `src/CodeFlow.App/Security/CredentialStore.cs`
-**Behaviour**: Three formatter functions build the `key` half of the `(SERVICE, key)` pair:
+**Behaviour**: Four formatter functions build the `key` half of the `(SERVICE, key)` pair:
 `ado_pat_key(org) = format!("ado-pat:{org}")`, `github_token_key(host) = format!("github-token:{host}")`,
-`ai_api_key(provider) = format!("ai-api-key:{provider}")`. Azure DevOps is keyed per org
+`ai_api_key(provider) = format!("ai-api-key:{provider}")`,
+`db_password_key(connectionId) = format!("db-password:{connectionId}")`. Azure DevOps is keyed per org
 (a PAT is org-scoped); GitHub is keyed per host (a token is account-wide across every repo/org
 that host serves, and this shape leaves room for a GitHub Enterprise host later); the AI key is
 keyed per provider id (several providers configurable side by side).
+
+The database password is keyed by the **connection's id** rather than by host or database name,
+because a connection is what the user named and edits: renaming its host must not strand the
+password, and two logins to the same server are two secrets. Like the AI key it is never returned
+over IPC — the sidecar reads it to build a connection string that does not leave the process, and
+`db_connections` holds everything except this (`15-dbml.md`, `DBML-024`).
 **Inputs / outputs**: `org: string` / `host: string` / `provider: string` in; a `string` key out. No
 validation, sanitization, or escaping of the input — whatever string is passed becomes part of
 the key verbatim (e.g. a colon in `org` would produce a key with two colons; nothing prevents

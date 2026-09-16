@@ -353,5 +353,26 @@ internal static class Schema
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dbml_layouts_key
             ON dbml_layouts (project_id, rel_path, table_key);
+
+        -- A database the schema designer can read a schema out of (DBML-023). Everything needed to
+        -- reach a server EXCEPT the password, which lives in the OS credential store under
+        -- `db-password:{id}` and is never returned over IPC (DBML-024).
+        --
+        -- Not scoped to a project or a workspace: a connection is a thing on the developer's
+        -- machine, and the same staging database is read from whichever folder happens to be open.
+        -- `file_path` is SQLite's alternative to host/port/database, and is null for the others.
+        CREATE TABLE IF NOT EXISTS db_connections (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            driver     TEXT NOT NULL,
+            host       TEXT,
+            port       INTEGER,
+            database   TEXT,
+            username   TEXT,
+            file_path  TEXT,
+            use_tls    INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """;
 }

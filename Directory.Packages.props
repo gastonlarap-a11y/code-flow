@@ -53,6 +53,22 @@
     <PackageVersion Include="MQTTnet" Version="5.2.0.1603" />
   </ItemGroup>
 
+  <ItemGroup Label="Schema designer — database introspection">
+    <!--
+      Read-only drivers for the schema designer's "read a real database" import (DBML-023). Versions
+      read from api.nuget.org's flat-container index on 2026-09-16, prereleases filtered, not
+      recalled. SQLite needs nothing new: Microsoft.Data.Sqlite is already here for the app's own
+      store, and the introspector opens the user's file with it in read-only mode.
+
+      These are the only packages here that open a socket to a host the *user* names, which is why
+      the introspectors set their own timeouts and never pass a connection string to anything that
+      could log it.
+    -->
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
+  </ItemGroup>
+
   <ItemGroup Label="Terminal">
     <!-- The only viable cross-platform .NET PTY today: single maintainer, 24 stars.
          dotnet/runtime#128565 (built-in PTY) is open against milestone 12.0.0, so there is

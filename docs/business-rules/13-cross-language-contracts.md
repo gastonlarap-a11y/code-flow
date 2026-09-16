@@ -376,6 +376,30 @@ into an unhandled failure.
 
 ---
 
+### XLANG-018 The refused-database error prefix
+**Implementation**: `src/CodeFlow.App/Dbml/IDbmlIntrospector.cs` (`DbmlConnectionException.Marker`) · `renderer/src/lib/dbml/connectionError.ts`
+**Behaviour**: A database the schema designer could not reach, or that refused the login, returns an
+error string prefixed with a sentinel, so the frontend can show the driver's own diagnosis — a wrong
+port, a bad password, a server that is not running — instead of "could not import".
+
+`
+DB_CONNECTION_REFUSED:
+`
+(with a trailing space — `"DB_CONNECTION_REFUSED: "`)
+
+**Inputs / outputs**: composed at the point the connection fails and carried up through
+`dbml_test_connection` and `dbml_introspect_database`. `connectionRefusal(error)` finds it by index —
+not by `startsWith`, because the shell and Electron each add a prefix on the way up — and returns the
+remainder, or `null` when the failure is something else. That distinction is the point: "the database
+said no" and "the command blew up" read identically without it and lead to different next steps.
+**What the message must never contain is the connection string.** It holds the password, and several
+drivers put it in their own exception text; only the driver's sentence survives translation
+(`15-dbml.md`, `DBML-024`).
+**Frontend dependency**: `components/dbml/DbConnectionPanel.tsx`, `components/dbml/ImportDbmlModal.tsx`.
+**Markers**: `VERBATIM`. **New in the port** — there was no database introspection in 1.7.2.
+
+---
+
 ### XLANG-013 The self-approval error prefix, and the GitHub sentence behind it
 **Implementation**: `src/CodeFlow.App/Providers/GitHub/GitHubClient.cs` (`GitHubException.SelfApprovalPrefix`) · `renderer/src/state/prStore.ts`
 **Behaviour**: GitHub answers `422` when the reviewer is the pull request's own author. That call

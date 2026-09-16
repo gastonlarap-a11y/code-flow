@@ -3,8 +3,12 @@ import { Download, FileCode } from "lucide-react";
 import { Modal } from "../common/Modal";
 import { Button } from "../common/Button";
 import { Select } from "../common/Select";
+import { DbConnectionPanel } from "./DbConnectionPanel";
 import { importSql, type SqlImportDialect } from "../../lib/dbml/importers/sql";
 import { importPrisma } from "../../lib/dbml/importers/prisma";
+import { emitDbml } from "../../lib/dbml/emitDbml";
+import { connectionRefusal } from "../../lib/dbml/connectionError";
+import { dbmlIntrospectDatabase } from "../../lib/ipc/commands";
 import { apiPickFile, apiReadTextFile } from "../../lib/ipc/apiCommands";
 import { useDbmlStore } from "../../state/dbmlStore";
 import { pushErrorToast } from "../../state/toastStore";
@@ -18,13 +22,14 @@ import type { TranslationKey } from "../../lib/i18n/translations";
  * looking at" are different asks, and only one of them is reversible — a new file leaves whatever
  * was open exactly where it was, and the picker switches to it when it is written.
  */
-type Source = SqlImportDialect | "prisma";
+type Source = SqlImportDialect | "prisma" | "database";
 
 const SOURCES: readonly { value: Source; label: TranslationKey; extensions: string[] }[] = [
   { value: "postgres", label: "dbml.import.postgres", extensions: ["sql"] },
   { value: "mysql", label: "dbml.import.mysql", extensions: ["sql"] },
   { value: "mssql", label: "dbml.import.mssql", extensions: ["sql"] },
   { value: "prisma", label: "dbml.import.prisma", extensions: ["prisma"] },
+  { value: "database", label: "dbml.import.database", extensions: [] },
 ];
 
 /** The refusals the document name can earn, as the key that says so. */
@@ -36,7 +41,8 @@ const NAME_ERRORS = {
   exists: "dbml.error.exists",
 } as const satisfies Record<string, TranslationKey>;
 
-function convert(text: string, source: Source): string {
+/** Turns whatever the pasted text is into DBML. Not reached for `database`, which has no text. */
+function convert(text: string, source: Exclude<Source, "database">): string {
   return source === "prisma" ? importPrisma(text) : importSql(text, source);
 }
 
@@ -49,8 +55,22 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<keyof typeof NAME_ERRORS | null>(null);
   const [busy, setBusy] = useState(false);
+  const [connectionId, setConnectionId] = useState<string | null>(null);
 
   const active = SOURCES.find((option) => option.value === source) ?? SOURCES[0]!;
+  /** What "there is something to import" means, which differs by source. */
+  const hasInput = source === "database" ? connectionId !== null : text.trim().length > 0;
+
+  /** Reads the chosen database and writes what it found as DBML. */
+  const readDatabase = async (): Promise<string> => {
+    if (connectionId === null) throw new Error(t("dbml.db.connection"));
+
+    const snapshot = await dbmlIntrospectDatabase(connectionId);
+    const dbml = emitDbml(snapshot);
+    if (dbml.trim().length === 0) throw new Error(t("dbml.import.emptyDatabase"));
+
+    return dbml;
+  };
 
   const pick = async () => {
     const path = await apiPickFile(active.extensions);
@@ -70,9 +90,9 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
     setBusy(true);
     setNameError(null);
     try {
-      // Converted before the file is named on disk: a script that cannot be read should say so
-      // rather than leave an empty document behind.
-      const dbml = convert(text, source);
+      // Produced before the file is named on disk: a script that cannot be read, or a database that
+      // refuses, should say so rather than leave an empty document behind.
+      const dbml = source === "database" ? await readDatabase() : convert(text, source);
       const failure = await createDocument(rootPath, name, dbml);
       if (failure === null) {
         onClose();
@@ -80,7 +100,12 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
       }
       setNameError(failure);
     } catch (e) {
-      pushErrorToast(t("dbml.import.failed", { error: String(e) }));
+      // A database that refused is its own sentence, not a stack: the driver already said what is
+      // wrong, and wrapping it in "could not import" twice buries it.
+      const refusal = connectionRefusal(e);
+      pushErrorToast(
+        refusal === null ? t("dbml.import.failed", { error: String(e) }) : t("dbml.db.testFailed", { error: refusal }),
+      );
     } finally {
       setBusy(false);
     }
@@ -103,10 +128,10 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
             variant="primary"
             icon={Download}
             pending={busy}
-            disabled={busy || text.trim().length === 0 || name.trim().length === 0}
+            disabled={busy || !hasInput || name.trim().length === 0}
             onClick={() => void submit()}
           >
-            {t("dbml.import.action")}
+            {busy && source === "database" ? t("dbml.import.reading") : t("dbml.import.action")}
           </Button>
         </>
       }
@@ -122,23 +147,30 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
               options={SOURCES.map((option) => ({ value: option.value, label: t(option.label) }))}
             />
           </label>
-          <Button variant="secondary" icon={FileCode} disabled={busy} onClick={() => void pick()}>
-            {t("dbml.import.pickFile")}
-          </Button>
+          {/* A database has no file to open — its own panel owns everything that source needs. */}
+          {source !== "database" && (
+            <Button variant="secondary" icon={FileCode} disabled={busy} onClick={() => void pick()}>
+              {t("dbml.import.pickFile")}
+            </Button>
+          )}
         </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-relaxed text-[var(--cf-text)]">{t("dbml.import.contents")}</span>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={busy}
-            rows={10}
-            spellCheck={false}
-            placeholder={t("dbml.import.placeholder")}
-            className="w-full resize-y rounded-md border border-[var(--cf-border)] bg-transparent px-2.5 py-1.5 font-mono text-body leading-relaxed outline-none focus:border-[var(--cf-accent)] disabled:opacity-60"
-          />
-        </label>
+        {source === "database" ? (
+          <DbConnectionPanel onReady={setConnectionId} disabled={busy} />
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-relaxed text-[var(--cf-text)]">{t("dbml.import.contents")}</span>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={busy}
+              rows={10}
+              spellCheck={false}
+              placeholder={t("dbml.import.placeholder")}
+              className="w-full resize-y rounded-md border border-[var(--cf-border)] bg-transparent px-2.5 py-1.5 font-mono text-body leading-relaxed outline-none focus:border-[var(--cf-accent)] disabled:opacity-60"
+            />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="text-relaxed text-[var(--cf-text)]">{t("dbml.nameLabel")}</span>
@@ -152,7 +184,9 @@ export function ImportDbmlModal({ rootPath, onClose }: { rootPath: string; onClo
             placeholder={t("dbml.namePlaceholder")}
             className="cf-focusable w-full rounded-control border border-[var(--cf-border)] bg-[var(--cf-bg)] px-2 py-1.5 text-body text-[var(--cf-text)] outline-none disabled:opacity-60"
           />
-          <span className="text-badge text-[var(--cf-text-muted)]">{t("dbml.import.hint")}</span>
+          <span className="text-badge text-[var(--cf-text-muted)]">
+            {t(source === "database" ? "dbml.import.hintDatabase" : "dbml.import.hint")}
+          </span>
         </label>
 
         {nameError !== null && (

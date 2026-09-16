@@ -25,7 +25,11 @@ public sealed class DbmlCommandsTests : IDisposable
 
     /// <summary>Every command this domain owns, from <c>01-ipc-surface.md</c>.</summary>
     private static readonly string[] Expected =
-        ["dbml_list_documents", "dbml_load_layout", "dbml_save_positions", "dbml_clear_layout", "dbml_assist"];
+    [
+        "dbml_list_documents", "dbml_load_layout", "dbml_save_positions", "dbml_clear_layout", "dbml_assist",
+        "dbml_list_connections", "dbml_save_connection", "dbml_delete_connection", "dbml_test_connection",
+        "dbml_introspect_database",
+    ];
 
     [Fact]
     public void The_commands_this_slice_owns_are_registered_under_their_contract_names()
@@ -41,6 +45,10 @@ public sealed class DbmlCommandsTests : IDisposable
     [InlineData("dbml_save_positions", "projectId")]
     [InlineData("dbml_clear_layout", "projectId")]
     [InlineData("dbml_assist", "mode")]
+    [InlineData("dbml_save_connection", "connection")]
+    [InlineData("dbml_delete_connection", "connectionId")]
+    [InlineData("dbml_test_connection", "connectionId")]
+    [InlineData("dbml_introspect_database", "connectionId")]
     public async Task A_missing_argument_is_named_in_the_error(string command, string argument)
     {
         var error = await Assert.ThrowsAnyAsync<Exception>(async () => await InvokeAsync(command, new { }));

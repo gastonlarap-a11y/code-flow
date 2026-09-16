@@ -30,6 +30,22 @@ public static class RepoStatus
     public static Repository Open(string path) => new(path);
 
     /// <summary>
+    /// Whether <paramref name="path"/> is inside a git working tree (GIT-039).
+    /// </summary>
+    /// <remarks>
+    /// A project is any folder the user pointed at — <c>ProjectStore.Create</c> inserts a row and
+    /// validates nothing — so the frontend needs to ask before it fires the seven reads of
+    /// <c>refreshAll</c>, each of which would throw <see cref="RepositoryNotFoundException"/> and
+    /// surface as its own error toast.
+    /// <para>
+    /// <see cref="Repository.Discover(string)"/> rather than <see cref="Repository.IsValid(string)"/>:
+    /// discover walks up to the containing repository, so a subfolder of a repo answers true, which
+    /// is what the rest of the git commands do when handed that same path.
+    /// </para>
+    /// </remarks>
+    public static bool IsRepository(string path) => Repository.Discover(path) is not null;
+
+    /// <summary>
     /// Buckets every changed path into exactly one of staged / unstaged / untracked / conflicted
     /// (GIT-001).
     /// </summary>

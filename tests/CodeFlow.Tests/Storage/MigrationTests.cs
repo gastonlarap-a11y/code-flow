@@ -41,13 +41,19 @@ public sealed class MigrationTests : IDisposable
         var tables = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
         var indexes = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'");
 
-        Assert.Equal(21, tables.Count);
-        Assert.Equal(9, indexes.Count);
+        Assert.Equal(22, tables.Count);
+        Assert.Equal(10, indexes.Count);
 
         // Spot-check the ones a later slice depends on being spelled exactly this way.
         Assert.Contains("workspace_prompts", tables);
         Assert.Contains("api_cookies", tables);
         Assert.Contains("idx_api_cookies_key", indexes);
+
+        // The schema designer's layouts (DBML-005). The unique index is not an optimisation: it is
+        // the conflict target `dbml_save_positions` upserts against, so without it every drag adds a
+        // row instead of moving one.
+        Assert.Contains("dbml_layouts", tables);
+        Assert.Contains("idx_dbml_layouts_key", indexes);
 
         // The work-item tables. `ticket_review_runs` is named here because the temptation is to
         // fold it into review_runs, and doing so would break that table's pr_id contract.

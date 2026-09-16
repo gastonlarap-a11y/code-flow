@@ -4,6 +4,8 @@ interface RewriteState {
   checkingOutBranch: string | null;
   /** Which of fetch/pull/push is running, if any. */
   remoteOp: "fetch" | "pull" | "push" | null;
+  /** Whether the project is a git repository at all; `null` while unresolved (GIT-039). */
+  isGitRepo: boolean | null;
 }
 
 /**
@@ -23,7 +25,11 @@ interface RewriteState {
  * `merging` is deliberately not one of these flags. It says the repository *is* in a merge, not that
  * a merge command is running, so gating on it would silence the watcher for as long as a conflict
  * stayed unresolved — which is exactly when an external edit most needs to show up.
+ *
+ * **Also no when the project is not a repository** (GIT-039). The watcher is a plain
+ * `FileSystemWatcher` and fires happily on any folder, so without this every saved file in a
+ * non-git project would kick off seven reads that each throw.
  */
 export function watcherMayRefresh(state: RewriteState): boolean {
-  return state.checkingOutBranch === null && state.remoteOp === null;
+  return state.isGitRepo !== false && state.checkingOutBranch === null && state.remoteOp === null;
 }

@@ -2,7 +2,8 @@ import { useUiStore } from "../state/uiStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { useTerminalStore } from "../state/terminalStore";
 import { useNavigationStore } from "../state/navigationStore";
-import { MODULE_ORDER } from "./modules";
+import { useRepoStore } from "../state/repoStore";
+import { availableModules } from "./modules";
 import { fetchNow, pullNow, pushNow } from "./gitActions";
 import type { Chord } from "./keys";
 import type { TranslationKey } from "./i18n/translations";
@@ -21,6 +22,7 @@ export type ShortcutId =
   | "view.changes"
   | "view.editor"
   | "view.api"
+  | "view.dbml"
   | "view.next"
   | "view.prev"
   | "nav.back"
@@ -58,11 +60,16 @@ export const SHORTCUT_GROUP_LABELS: Record<ShortcutGroup, TranslationKey> = {
 // Registry order, every module in it — including the workspace-scoped ones, because cycling is about
 // reaching every view from the keyboard and leaving one out makes the shortcut a trap for it. It
 // used to be a literal here that had to be kept in step with the tab bar and `App.tsx` by hand.
+//
+// The one exclusion is a module the current project cannot open at all (`graph`/`changes` on a
+// folder with no git — GIT-039): the navigation does not list it, so cycling onto it would land on
+// a view nothing can reach back from.
 function cycleView(delta: number): void {
   const { activeView, setActiveView } = useUiStore.getState();
-  const index = MODULE_ORDER.indexOf(activeView);
-  // MODULE_ORDER is non-empty, so the modulo index always lands in range.
-  setActiveView(MODULE_ORDER[(index + delta + MODULE_ORDER.length) % MODULE_ORDER.length]!);
+  const order = availableModules(useRepoStore.getState().isGitRepo).map((m) => m.id);
+  const index = order.indexOf(activeView);
+  // `order` always contains at least the app-scoped modules, so the modulo index lands in range.
+  setActiveView(order[(index + delta + order.length) % order.length]!);
 }
 
 /** Replays a history entry — shared with the title bar's back/forward chevrons so both routes
@@ -189,6 +196,13 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
     labelKey: "shortcuts.cmdViewApi",
     defaultChord: "Mod+4",
     run: () => useUiStore.getState().setActiveView("api"),
+  },
+  {
+    id: "view.dbml",
+    group: "views",
+    labelKey: "shortcuts.cmdViewDbml",
+    defaultChord: "Mod+5",
+    run: () => useUiStore.getState().setActiveView("dbml"),
   },
   {
     id: "view.next",

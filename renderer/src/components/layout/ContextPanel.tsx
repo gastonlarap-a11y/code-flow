@@ -26,6 +26,9 @@ const MODULE_PANEL: Record<ModuleId, PanelId | null> = {
   graph: "repo",
   changes: "repo",
   editor: "repo",
+  // The schema designer carries its own document picker in its toolbar, and the column beside it
+  // is where the diagram needs the width. The repo panel would answer a question it is not asking.
+  dbml: null,
   // Nothing to show beside a module that does not exist yet. The real one will want a list of work
   // items here, which is the whole reason the panel dispatches per module.
   workitems: null,

@@ -40,8 +40,8 @@ and has no fallback path: if step 1 or 2 fails the app does not start.
 
 ## Schema
 
-21 tables (`CREATE TABLE IF NOT EXISTS` count in `src/CodeFlow.App/Storage/Schema.cs`), 9 indexes (7
-plain + 2 unique). Every table is created by one `conn.execute_batch(...)` call
+22 tables (`CREATE TABLE IF NOT EXISTS` count in `src/CodeFlow.App/Storage/Schema.cs`), 10 indexes (7
+plain + 3 unique). Every table is created by one `conn.execute_batch(...)` call
 (`src/CodeFlow.App/Storage/Migrations.cs`) run on every startup — `CREATE TABLE IF NOT EXISTS` makes each
 statement individually idempotent, which is the entire mechanism that makes re-running the
 batch safe. `PRAGMA foreign_keys = ON;` is the first statement in the batch and stays in
@@ -477,15 +477,23 @@ never selected by `TicketReviewStore.ForBranch` — it is the largest column in 
 so a stored verdict is re-checkable, not so it can be listed. A row whose JSON will not parse still
 returns its `review_md`, so one bad row cannot take the list down. `WI-013`.
 
-That is 21 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
+`dbml_layouts` holds where a person dragged each table of a schema document, one row per
+`(project_id, rel_path, table_key)`. The unique index `idx_dbml_layouts_key` is not an optimisation:
+it is the conflict target `dbml_save_positions` upserts against, so a second drag moves a row
+instead of adding one. It cascades from `projects`. **No migration step** — it is a new table, so the
+`IF NOT EXISTS` batch creates it on the next start, per the `db-migration` procedure. Its behaviour is
+owned by `15-dbml.md` (`DBML-005`).
+
+That is 22 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
 `review_runs`, `workspace_skills`, `workspace_agents`, `workspace_mcps`, `app_settings`,
 `activity_log`, `job_history`, `conversation_titles`, `tickets`, `ticket_links`,
 `ticket_review_runs`, `api_collections`, `api_folders`,
-`api_requests`, `api_environments`, `api_history`, `api_cookies`) and 9 indexes
+`api_requests`, `api_environments`, `api_history`, `api_cookies`, `dbml_layouts`) and 10 indexes
 (`idx_review_runs_pr`, `idx_activity_log_project`, `idx_job_history_project`,
 `idx_tickets_identity`, `idx_ticket_review_runs_branch`,
 `idx_api_folders_parent`, `idx_api_requests_parent`,
-`idx_api_history_time`, `idx_api_cookies_key` — the last and `idx_tickets_identity` are `UNIQUE`).
+`idx_api_history_time`, `idx_api_cookies_key`, `idx_dbml_layouts_key` — the last two and
+`idx_tickets_identity` are `UNIQUE`).
 
 `idx_activity_log_project` and `idx_job_history_project` are **not** 1.7.2's. Both tables are
 append-only and never purged, and every read of either filters by `project_id` and orders by

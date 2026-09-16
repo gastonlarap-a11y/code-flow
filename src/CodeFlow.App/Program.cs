@@ -1,6 +1,7 @@
 using CodeFlow.Activity;
 using CodeFlow.Ai;
 using CodeFlow.ApiClient;
+using CodeFlow.Dbml;
 using CodeFlow.Diagnostics;
 using CodeFlow.Files;
 using CodeFlow.Git;
@@ -140,6 +141,7 @@ internal static class Program
             .AddGitCommands(gitNetwork, database)
             .AddFileCommands()
             .AddWatcherCommands(watcher)
+            .AddDbmlCommands(database)
             .AddApiCommands(database)
             .AddApiHttpCommands(apiRequests)
             .AddApiStreamCommands(apiStreams)

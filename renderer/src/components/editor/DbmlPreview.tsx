@@ -1,5 +1,5 @@
 import { forwardRef, useMemo } from "react";
-import { parseDbml } from "../../lib/dbml";
+import { parseDbml } from "../../lib/dbml/schema";
 import { DbmlDiagram } from "./DbmlDiagram";
 
 // Parsing and drawing live together here so `EditorPane` can reach both through one `lazy()`.

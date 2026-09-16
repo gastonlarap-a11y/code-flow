@@ -11,6 +11,7 @@ import type {
   CommitFileInfo,
   CommitInfo,
   ConflictFile,
+  DbmlTablePosition,
   FileDiffInfo,
   FileEntry,
   GitIdentity,
@@ -113,6 +114,15 @@ export const updateProjectColor = (id: string, color: string) =>
   invoke<void>("update_project_color", { id, color });
 
 // ---------- git: read ----------
+
+/**
+ * Whether a folder is inside a git working tree (GIT-039).
+ *
+ * The one git command safe to call on a project that may not be a repository — a project is any
+ * folder the user picked. Everything else in this section throws without a repository, so this is
+ * what `repoStore.setRepoPath` asks before it fires the rest.
+ */
+export const isGitRepo = (path: string) => invoke<boolean>("is_git_repo", { path });
 
 export const getStatus = (repoPath: string) => invoke<RepoStatusInfo>("get_status", { repoPath });
 
@@ -772,6 +782,32 @@ export const openInVsCode = (path: string) => invoke<void>("open_in_vscode", { p
 
 /** Every non-ignored file in the repo, repo-relative — the corpus "go to file" filters over. */
 export const listRepoFiles = (repoPath: string) => invoke<string[]>("list_repo_files", { repoPath });
+
+// ---------- schema designer ----------
+
+/**
+ * Every `.dbml` document in the project folder, project-relative and sorted (DBML-001).
+ *
+ * Not `listRepoFiles`, which opens a repository: a schema designer has to work in a plain folder
+ * (GIT-039). Build and dependency directories are pruned by the sidecar.
+ */
+export const dbmlListDocuments = (rootPath: string) =>
+  invoke<string[]>("dbml_list_documents", { rootPath });
+
+/** The positions a person dragged this document's tables to (DBML-005). Tables absent here are auto-laid out. */
+export const dbmlLoadLayout = (projectId: string, relPath: string) =>
+  invoke<DbmlTablePosition[]>("dbml_load_layout", { projectId, relPath });
+
+/**
+ * Stores positions, moving any table that already had one. The objects keep their snake_case keys —
+ * they are the rows `dbmlLoadLayout` returned, sent back.
+ */
+export const dbmlSavePositions = (projectId: string, relPath: string, positions: DbmlTablePosition[]) =>
+  invoke<void>("dbml_save_positions", { projectId, relPath, positions });
+
+/** Forgets every position of one document, so the auto-layout places all of it again. */
+export const dbmlClearLayout = (projectId: string, relPath: string) =>
+  invoke<void>("dbml_clear_layout", { projectId, relPath });
 
 export interface SearchHit {
   path: string;

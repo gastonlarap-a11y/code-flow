@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { watcherMayRefresh } from "./repoRefreshGate";
 
-const idle = { checkingOutBranch: null, remoteOp: null } as const;
+const idle = { checkingOutBranch: null, remoteOp: null, isGitRepo: true } as const;
 
 describe("watcherMayRefresh", () => {
   test("an external change refreshes when the app is not writing", () => {
@@ -22,6 +22,18 @@ describe("watcherMayRefresh", () => {
     for (const remoteOp of ["fetch", "pull", "push"] as const) {
       expect(watcherMayRefresh({ ...idle, remoteOp })).toBe(false);
     }
+  });
+
+  test("a project that is not a repository never refreshes", () => {
+    // GIT-039. The watcher is a plain FileSystemWatcher and fires on any folder, so without this
+    // every save in a non-git project starts seven reads that each throw and each raise a toast.
+    expect(watcherMayRefresh({ ...idle, isGitRepo: false })).toBe(false);
+  });
+
+  test("an unresolved project is treated as a repository", () => {
+    // `null` is "the answer has not arrived yet", one IPC round-trip wide. Refusing there would
+    // drop the first external change after opening a repo, which is worse than one failed read.
+    expect(watcherMayRefresh({ ...idle, isGitRepo: null })).toBe(true);
   });
 
   test("a checkout onto a branch named the empty string still counts as in flight", () => {

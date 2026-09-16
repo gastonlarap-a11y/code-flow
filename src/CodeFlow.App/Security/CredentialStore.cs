@@ -69,6 +69,21 @@ public static class CredentialStore
     /// <summary>AI provider API key. Deliberately never returned to the frontend.</summary>
     public static string AiApiKey(string provider) => $"ai-api-key:{provider}";
 
+    /// <summary>
+    /// The password for a saved database connection, keyed by the connection's id (<c>DBML-024</c>).
+    /// </summary>
+    /// <remarks>
+    /// Keyed by id rather than by host or database name, because a connection is what the user
+    /// named and edits: renaming its host must not strand the password, and two connections to the
+    /// same server with different logins are two secrets.
+    /// <para>
+    /// Like the AI key, it is <b>never returned over IPC</b>. The sidecar reads it to build a
+    /// connection string and that string never leaves the process — `db_connections` holds
+    /// everything except this.
+    /// </para>
+    /// </remarks>
+    public static string DbPasswordKey(string connectionId) => $"db-password:{connectionId}";
+
     /// <summary>Reads a secret, or <see langword="null"/> when nothing is stored under that key.</summary>
     /// <exception cref="CredentialStoreException">The store itself failed.</exception>
     public static string? Get(string key) => Backend.Get(Service, key);

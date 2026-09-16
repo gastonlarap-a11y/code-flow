@@ -73,7 +73,63 @@ public static class DbmlCommands
                     .ConfigureAwait(false);
 
                 return JsonSerializer.SerializeToUtf8Bytes(answer, DbmlJsonContext.Default.String);
+            })
+            // ---------- reading a real database (DBML-023) ----------
+            .Add("dbml_list_connections", (_, ct) =>
+                Read(database, DbmlConnectionStore.List, DbmlJsonContext.Default.IReadOnlyListDbmlConnection, ct))
+            .Add("dbml_save_connection", async (p, ct) =>
+            {
+                var input = Deserialize(p, "connection", DbmlJsonContext.Default.NewDbmlConnection);
+                var saved = await database.WriteAsync(c => DbmlConnectionStore.Save(c, input), ct).ConfigureAwait(false);
+
+                return JsonSerializer.SerializeToUtf8Bytes(saved, DbmlJsonContext.Default.DbmlConnection);
+            })
+            .Add("dbml_delete_connection", (p, ct) =>
+            {
+                var id = Arg(p, "connectionId");
+                return WriteUnit(database, c => DbmlConnectionStore.Delete(c, id), ct);
+            })
+            .Add("dbml_test_connection", async (p, ct) =>
+            {
+                var (connection, password) = await ResolveAsync(database, p, ct).ConfigureAwait(false);
+                await DbmlIntrospection.For(connection.Driver)
+                    .ProbeAsync(connection, password, ct).ConfigureAwait(false);
+
+                return "null"u8.ToArray();
+            })
+            .Add("dbml_introspect_database", async (p, ct) =>
+            {
+                var (connection, password) = await ResolveAsync(database, p, ct).ConfigureAwait(false);
+                var snapshot = await DbmlIntrospection.For(connection.Driver)
+                    .ReadAsync(connection, password, ct).ConfigureAwait(false);
+
+                return JsonSerializer.SerializeToUtf8Bytes(snapshot, DbmlJsonContext.Default.DbmlSchemaSnapshot);
             });
+
+    /// <summary>
+    /// The saved connection and its password, for a command that is about to open a socket.
+    /// </summary>
+    /// <remarks>
+    /// The password is fetched here and passed as an argument rather than read inside the
+    /// introspectors, so there is one place to look for where a secret enters this feature — and so
+    /// the introspectors stay testable without a credential store (<c>DBML-024</c>).
+    /// </remarks>
+    private static async ValueTask<(DbmlConnection Connection, string? Password)> ResolveAsync(
+        Database database, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        var id = Arg(parameters, "connectionId");
+        var connection = await database
+            .ReadAsync(c => DbmlConnectionStore.Get(c, id), cancellationToken).ConfigureAwait(false)
+            ?? throw new DbmlConnectionException($"connection '{id}' does not exist");
+
+        return (connection, DbmlConnectionStore.PasswordFor(id));
+    }
+
+    /// <summary>An object argument, read through this feature's own context.</summary>
+    private static T Deserialize<T>(JsonElement parameters, string name, JsonTypeInfo<T> type) =>
+        parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value.Deserialize(type) ?? throw new ArgumentException($"parameter '{name}' deserialised to null")
+            : throw new ArgumentException($"missing required parameter '{name}'");
 
     /// <summary>
     /// The run this command belongs to, from the id the renderer minted before invoking.

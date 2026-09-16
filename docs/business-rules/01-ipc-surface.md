@@ -19,8 +19,8 @@ Established by parsing the tree, not by reading it:
 
 | Set | Count | Source |
 |---|---|---|
-| Registered on the `CommandRegistry` | 230 | the `Add…Commands(…)` methods `src/CodeFlow.App/Program.cs` calls |
-| Distinct commands invoked by the frontend | 241 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts`, `lib/bridge/updater.ts` |
+| Registered on the `CommandRegistry` | 235 | the `Add…Commands(…)` methods `src/CodeFlow.App/Program.cs` calls |
+| Distinct commands invoked by the frontend | 246 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts`, `lib/bridge/updater.ts` |
 | Registered but never invoked | 0 | — |
 | Invoked but not registered | 11 | the nine `debug_*` and `api_grpc_call` / `api_grpc_describe` — **`DEAD`** |
 | Duplicate command names | 0 | — |
@@ -335,7 +335,7 @@ dependencies; it is not part of the payload.
 | `start_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | AppHandle, State | `startWatching` |
 | `stop_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | State | `stopWatching` |
 
-### `src/CodeFlow.App/Dbml/DbmlCommands.cs` — 5 commands → [15-dbml](15-dbml.md)
+### `src/CodeFlow.App/Dbml/DbmlCommands.cs` — 10 commands → [15-dbml](15-dbml.md)
 
 | Command | Caller parameters | Returns | Injected | TS wrapper |
 |---|---|---|---|---|
@@ -344,6 +344,11 @@ dependencies; it is not part of the payload.
 | `dbml_save_positions`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string`<br>`positions: Vec&lt;DbmlTablePosition&gt;` | `Result&lt;(), string&gt;` | State | `dbmlSavePositions` |
 | `dbml_clear_layout`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string` | `Result&lt;(), string&gt;` | State | `dbmlClearLayout` |
 | `dbml_assist`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `mode: string`<br>`dbml: string`<br>`instruction: string?`<br>`run_id: string?` | `Result&lt;string, string&gt;` | AI | `dbmlAssist` |
+| `dbml_list_connections`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | — | `Result&lt;Vec&lt;DbmlConnection&gt;, string&gt;` | State | `dbmlListConnections` |
+| `dbml_save_connection`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `connection: NewDbmlConnection` | `Result&lt;DbmlConnection, string&gt;` | State, Keychain | `dbmlSaveConnection` |
+| `dbml_delete_connection`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `connection_id: string` | `Result&lt;(), string&gt;` | State, Keychain | `dbmlDeleteConnection` |
+| `dbml_test_connection`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `connection_id: string` | `Result&lt;(), string&gt;` | State, Keychain | `dbmlTestConnection` |
+| `dbml_introspect_database`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `connection_id: string` | `Result&lt;DbmlSchemaSnapshot, string&gt;` | State, Keychain | `dbmlIntrospectDatabase` |
 
 ### `src/CodeFlow.App/Terminal/TerminalCommands.cs` — 4 commands → [11-files-search-terminal](11-files-search-terminal.md)
 

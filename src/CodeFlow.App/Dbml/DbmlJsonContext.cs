@@ -13,4 +13,8 @@ namespace CodeFlow.Dbml;
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
 [JsonSerializable(typeof(IReadOnlyList<DbmlTablePosition>))]
+[JsonSerializable(typeof(IReadOnlyList<DbmlConnection>))]
+[JsonSerializable(typeof(DbmlConnection))]
+[JsonSerializable(typeof(NewDbmlConnection))]
+[JsonSerializable(typeof(DbmlSchemaSnapshot))]
 internal sealed partial class DbmlJsonContext : JsonSerializerContext;

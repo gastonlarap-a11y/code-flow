@@ -484,11 +484,20 @@ instead of adding one. It cascades from `projects`. **No migration step** — it
 `IF NOT EXISTS` batch creates it on the next start, per the `db-migration` procedure. Its behaviour is
 owned by `15-dbml.md` (`DBML-005`).
 
-That is 22 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
+`db_connections` holds a database the schema designer can read a schema out of: driver, host, port,
+database, username, and `file_path` for SQLite, which has no server. **It has no password column**,
+and that is structural rather than an omission — the secret lives in the OS credential store under
+`db-password:{id}` and is never returned over IPC (`10-security.md`, `DBML-024`). It is scoped to
+neither a project nor a workspace: a connection is a thing on the developer's machine, and the same
+staging database is read from whichever folder happens to be open. **No migration step**, and no
+index: it is read whole, and a developer has a handful of connections rather than thousands.
+
+That is 23 tables total (`workspaces`, `projects`, `review_contexts`, `workspace_prompts`,
 `review_runs`, `workspace_skills`, `workspace_agents`, `workspace_mcps`, `app_settings`,
 `activity_log`, `job_history`, `conversation_titles`, `tickets`, `ticket_links`,
 `ticket_review_runs`, `api_collections`, `api_folders`,
-`api_requests`, `api_environments`, `api_history`, `api_cookies`, `dbml_layouts`) and 10 indexes
+`api_requests`, `api_environments`, `api_history`, `api_cookies`, `dbml_layouts`,
+`db_connections`) and 10 indexes
 (`idx_review_runs_pr`, `idx_activity_log_project`, `idx_job_history_project`,
 `idx_tickets_identity`, `idx_ticket_review_runs_branch`,
 `idx_api_folders_parent`, `idx_api_requests_parent`,

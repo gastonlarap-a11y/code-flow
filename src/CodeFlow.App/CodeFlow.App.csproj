@@ -43,6 +43,9 @@
     <PackageReference Include="LibGit2Sharp" />
     <PackageReference Include="Porta.Pty" />
     <PackageReference Include="MQTTnet" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="MySqlConnector" />
   </ItemGroup>
 
   <ItemGroup>

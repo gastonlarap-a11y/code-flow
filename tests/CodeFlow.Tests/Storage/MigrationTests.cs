@@ -41,7 +41,7 @@ public sealed class MigrationTests : IDisposable
         var tables = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
         var indexes = Names(connection, "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'");
 
-        Assert.Equal(22, tables.Count);
+        Assert.Equal(23, tables.Count);
         Assert.Equal(10, indexes.Count);
 
         // Spot-check the ones a later slice depends on being spelled exactly this way.

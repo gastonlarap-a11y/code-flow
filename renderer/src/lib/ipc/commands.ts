@@ -12,7 +12,10 @@ import type {
   CommitInfo,
   ConflictFile,
   DbmlAssistMode,
+  DbmlConnection,
+  DbmlSchemaSnapshot,
   DbmlTablePosition,
+  NewDbmlConnection,
   FileDiffInfo,
   FileEntry,
   GitIdentity,
@@ -839,6 +842,32 @@ export const dbmlClearLayout = (projectId: string, relPath: string) =>
  */
 export const dbmlAssist = (mode: DbmlAssistMode, dbml: string, instruction: string, runId?: string) =>
   invoke<string>("dbml_assist", { mode, dbml, instruction, runId });
+
+// ---------- reading a real database (DBML-023) ----------
+
+/** Every saved connection. Never carries a password — the sidecar has no way to return one. */
+export const dbmlListConnections = () => invoke<DbmlConnection[]>("dbml_list_connections");
+
+/**
+ * Creates or updates a connection.
+ *
+ * A blank `password` leaves whatever is stored alone, which is what makes editing the port possible
+ * without retyping the secret (DBML-024). The object keeps its snake_case keys in both directions.
+ */
+export const dbmlSaveConnection = (connection: NewDbmlConnection) =>
+  invoke<DbmlConnection>("dbml_save_connection", { connection });
+
+/** Removes a connection and its stored password. */
+export const dbmlDeleteConnection = (connectionId: string) =>
+  invoke<void>("dbml_delete_connection", { connectionId });
+
+/** Opens the connection and closes it. Rejects with `DB_CONNECTION_REFUSED: ` and the driver's own words. */
+export const dbmlTestConnection = (connectionId: string) =>
+  invoke<void>("dbml_test_connection", { connectionId });
+
+/** Reads every table, key, relation, index and enum the login can see. */
+export const dbmlIntrospectDatabase = (connectionId: string) =>
+  invoke<DbmlSchemaSnapshot>("dbml_introspect_database", { connectionId });
 
 export interface SearchHit {
   path: string;

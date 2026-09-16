@@ -3,17 +3,22 @@
 ## Scope
 
 - `src/CodeFlow.App/Dbml/` — `DbmlCommands.cs`, `DbmlDocuments.cs`, `DbmlLayoutStore.cs`,
-  `DbmlAssistant.cs`, `DbmlTablePosition.cs`, `DbmlJsonContext.cs`
+  `DbmlAssistant.cs`, `DbmlTablePosition.cs`, `DbmlJsonContext.cs`, `DbmlConnection.cs`,
+  `DbmlConnectionStore.cs`, `DbmlSnapshot.cs`, `DbmlSnapshotBuilder.cs`, `IDbmlIntrospector.cs`,
+  `DbmlIntrospection.cs`
+- `src/CodeFlow.App/Dbml/Introspectors/` — `Catalogue.cs`, `PostgresIntrospector.cs`,
+  `SqlServerIntrospector.cs`, `MySqlIntrospector.cs`, `SqliteIntrospector.cs`
 - `src/CodeFlow.App/Ai/Prompts/` — `DBML_EDIT_PROMPT.txt`, `DBML_REVIEW_PROMPT.txt`,
   `DBML_EXPLAIN_PROMPT.txt`
 - `renderer/src/lib/dbml/` — `parse.ts` (the `@dbml/core` boundary), `model.ts`, `layout.ts`,
   `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`, `documentPath.ts`,
-  `assist.ts`
+  `assist.ts`, `emitDbml.ts`, `connectionError.ts`
 - `renderer/src/lib/dbml/exporters/` — `sql.ts`, `prisma.ts`
 - `renderer/src/lib/dbml/importers/` — `sql.ts`, `prisma.ts`
 - `renderer/src/state/dbmlStore.ts`
 - `renderer/src/components/dbml/` — `DbmlView.tsx`, `DbmlCanvas.tsx`, `DbmlViewportControls.tsx`,
-  `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`, `ImportDbmlModal.tsx`, `DbmlAiModal.tsx`
+  `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`, `ImportDbmlModal.tsx`, `DbmlAiModal.tsx`,
+  `DbConnectionPanel.tsx`
 - `renderer/src/components/editor/DbmlPreview.tsx` — the Editor's quick look, drawn by the same
   canvas
 
@@ -40,6 +45,11 @@ table. One line each:
 - `dbml_save_positions` — stores positions, moving any table that already had one.
 - `dbml_clear_layout` — forgets one document's positions, so the auto-layout places all of it again.
 - `dbml_assist` — runs one of three AI modes over the document's text.
+- `dbml_list_connections` — the saved databases. Never carries a password.
+- `dbml_save_connection` — creates or updates one; a blank password leaves the stored one alone.
+- `dbml_delete_connection` — removes it, and the password with it.
+- `dbml_test_connection` — opens the connection and closes it.
+- `dbml_introspect_database` — reads the schema, as structured data rather than as DBML.
 
 ## The `@dbml/core` boundary
 
@@ -526,12 +536,109 @@ button is never disabled.
 **Frontend dependency**: none outward.
 **Markers**: none.
 
+---
+
+### DBML-023 A connection is a thing on the machine, and reading is all it can do
+**Implementation**: `src/CodeFlow.App/Dbml/DbmlConnectionStore.cs` · `Dbml/Introspectors/`
+**Behaviour**: Four engines can be read: PostgreSQL, SQL Server, MySQL/MariaDB and SQLite. A saved
+connection carries what is needed to reach one — driver, host, port, database, username, TLS, and
+`file_path` for the engine that is a file rather than a server.
+
+**Read-only, structurally.** No introspector issues DDL or DML; a schema designer that could write
+to the database a person pointed it at is a different and much more dangerous tool. Connections are
+scoped to neither a project nor a workspace: the same staging database is read from whichever folder
+happens to be open.
+**Inputs / outputs**: the five `dbml_*_connection` / `dbml_introspect_database` commands.
+**Edge cases**: an unrecognised driver is an **error**, unlike the AI engine catalogue which falls
+back to Claude — a schema read with the wrong engine is not a degraded answer, it is a wrong one.
+Deleting removes the credential **before** the row: a row that outlives its secret asks for the
+password again, while a secret that outlives its row is one nothing will ever read or clean up.
+Saving writes the row **before** the credential, so a failed insert cannot file a secret under an id
+that does not exist.
+**Frontend dependency**: `components/dbml/DbConnectionPanel.tsx`.
+**Markers**: none.
+
+---
+
+### DBML-024 The password is the one thing that never crosses the boundary
+**Implementation**: `src/CodeFlow.App/Security/CredentialStore.cs` (`DbPasswordKey`) · `Dbml/DbmlCommands.cs`
+**Behaviour**: `db_connections` has **no password column**. The secret goes to the OS credential
+store under `db-password:{id}` and is read only inside the sidecar, to build a connection string that
+never leaves the process. `DbmlConnection` — the record that crosses IPC in both directions — has no
+field for it, so this is enforced by the type rather than by care.
+
+Keyed by the connection's id rather than by host or database name: renaming a host must not strand
+the password, and two logins to the same server are two secrets.
+**Inputs / outputs**: `password` travels renderer → sidecar only, on `dbml_save_connection`.
+**Edge cases**: **a blank password means "leave what is stored"**, not "clear it". The renderer
+cannot show what is held, so an untouched field arrives empty on every edit, and treating that as a
+clear would wipe the secret each time somebody fixed a typo in the port. A failure to reach the
+server reports the **driver's own sentence only** — several drivers put the connection string in
+their exception, which would otherwise carry the password into a toast, a log and a bug report.
+**Frontend dependency**: `lib/dbml/connectionError.ts`, and the `DB_CONNECTION_REFUSED: ` sentinel
+in `13-cross-language-contracts.md`.
+**Markers**: `VERBATIM` on the key format and on the sentinel.
+
+---
+
+### DBML-025 The sidecar reports a schema; the renderer writes the document
+**Implementation**: `src/CodeFlow.App/Dbml/DbmlSnapshotBuilder.cs` · `renderer/src/lib/dbml/emitDbml.ts`
+**Behaviour**: `dbml_introspect_database` answers with a **structured snapshot**, not DBML text, and
+`emitDbml` turns it into a document. So DBML emission lives in exactly one place — a pure function a
+node test can call — instead of once per engine in C#, where nothing could test it without a server
+and four copies would drift.
+
+Between the two sits `DbmlSnapshotBuilder`, which is the other half of the same idea: every engine
+answers the same five questions in its own dialect and *as rows*, so assembling those rows into a
+schema is identical work done once. That is also what makes all four engines testable — a synthetic
+row set proves the assembly without a PostgreSQL, a SQL Server and a MySQL to connect to.
+**Inputs / outputs**: rows → `DbmlSchemaSnapshot` → DBML text.
+**Edge cases**: a column is `pk` when a primary-key constraint names it, and `unique` only when a
+**single-column** unique constraint does — a member of a two-column unique key is not unique on its
+own. A single-column key produces **no index block**, because the column's own setting already says
+it; a composite one does, because DBML has nowhere else to put it. The index backing a constraint is
+reported by every engine alongside the constraint itself, and is dropped rather than drawn twice.
+`NO ACTION` is dropped, since it is what every key that declares nothing reports. A relationship is
+always written `>`: the snapshot carries a constraint, not a cardinality, and claiming one-to-one
+from a foreign key alone would be a guess the database did not make.
+**Frontend dependency**: `components/dbml/ImportDbmlModal.tsx`.
+**Markers**: none.
+
+---
+
+### DBML-026 Each engine's catalogue, and what it takes to read it correctly
+**Implementation**: `src/CodeFlow.App/Dbml/Introspectors/`
+**Behaviour**: Four query sets behind one interface. **PostgreSQL** reads columns from
+`information_schema` and everything else from `pg_catalog`, because that is the only place member
+*order* survives — a composite foreign key read through `constraint_column_usage` comes back with its
+columns unordered, which pairs the wrong ones together and is silent about it. It is also the only
+engine with real enumerated types. **SQL Server** uses `INFORMATION_SCHEMA` for columns and `sys` for
+keys, relations and indexes, for the same ordering reason (`sys.index_columns.key_ordinal`).
+**MySQL** is the friendliest: `COLUMN_TYPE` already carries the arguments and `EXTRA` says
+`auto_increment` outright; every query is scoped with `DATABASE()`, without which
+`information_schema` returns every table on the server. **SQLite** reads `PRAGMA` functions, one
+round trip per table, and is opened `ReadOnly` so a path that does not exist is refused rather than
+created.
+**Inputs / outputs**: a connection and its password → a `DbmlSchemaSnapshot`.
+**Edge cases**: each engine reports defaults in its own wrapping and each is unwrapped — PostgreSQL's
+`::cast`, SQL Server's doubled parentheses, SQLite's quotes; a PostgreSQL `nextval(…)` is dropped
+because `increment` already says it. **SQLite's rowid alias requires a primary key of exactly one
+INTEGER column**: read row by row, the first member of a composite key looked like one, and a join
+table imported as `pedido_id INTEGER [pk, increment]` — found by importing a real database, fixed,
+and pinned by a test. SQLite's `AUTOINCREMENT` is visible only in the stored DDL, which is why the
+table's `sql` is read. Every catalogue query carries a 30-second timeout, for the server that accepts
+the socket and then goes quiet.
+**Frontend dependency**: none outward.
+**Markers**: none.
+
 ## Test coverage
 
 | Test | Source | Kind |
 |---|---|---|
 | `DbmlCommandsTests` (21) | `src/CodeFlow.App/Dbml/` | scenario — real temp directories and a real migrated database |
 | `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
+| `DbmlSnapshotBuilderTests` (17) | `src/CodeFlow.App/Dbml/DbmlSnapshotBuilder.cs` | pure — synthetic rows, so it covers all four engines' assembly |
+| `SqliteIntrospectorTests` (12) | `src/CodeFlow.App/Dbml/Introspectors/SqliteIntrospector.cs` | scenario — a real SQLite file and real `PRAGMA` calls |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
 | `parse.test.ts` (9) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core`, grammar included |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |
@@ -543,6 +650,8 @@ button is never disabled.
 | `exporters/prisma.test.ts` (17) | `renderer/src/lib/dbml/exporters/prisma.ts` | pure — types, keys, both ends of every relation |
 | `importers/sql.test.ts` (8) | `renderer/src/lib/dbml/importers/sql.ts` | boundary — every case re-parses the output |
 | `importers/prisma.test.ts` (17) | `renderer/src/lib/dbml/importers/prisma.ts` | pure, plus the round trip against the exporter |
+| `emitDbml.test.ts` (12) | `renderer/src/lib/dbml/emitDbml.ts` | pure — every case re-parses the output |
+| `connectionError.test.ts` (4) | `renderer/src/lib/dbml/connectionError.ts` | pure — the sentinel |
 | `assist.test.ts` (9) | `renderer/src/lib/dbml/assist.ts` | pure — the four proposal states and the table delta |
 | `viewport.test.ts` (5) | `renderer/src/lib/dbml/viewport.ts` | pure |
 | `documentPath.test.ts` (12) | `renderer/src/lib/dbml/documentPath.ts` | pure |

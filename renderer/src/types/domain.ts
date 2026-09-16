@@ -562,3 +562,96 @@ export interface DbmlTablePosition {
  * parser (DBML-006).
  */
 export type DbmlAssistMode = "edit" | "review" | "explain";
+
+/** The engines the schema designer can read a schema out of (DBML-023). */
+export type DbmlDriver = "postgres" | "sqlserver" | "mysql" | "sqlite";
+
+export const DBML_DRIVERS: readonly DbmlDriver[] = ["postgres", "sqlserver", "mysql", "sqlite"];
+
+/**
+ * A saved database connection.
+ *
+ * **There is no password field, and that is structural** (DBML-024): it lives in the OS credential
+ * store and the sidecar never returns it. `file_path` is SQLite's alternative to host/port/database.
+ */
+export interface DbmlConnection {
+  id: string;
+  name: string;
+  driver: DbmlDriver;
+  host: string | null;
+  port: number | null;
+  database: string | null;
+  username: string | null;
+  file_path: string | null;
+  use_tls: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * What the renderer sends to create or update one.
+ *
+ * `password` travels in one direction only. Sending it blank leaves whatever is stored alone, which
+ * is what lets somebody fix a port without retyping the secret.
+ */
+export interface NewDbmlConnection {
+  id: string | null;
+  name: string;
+  driver: DbmlDriver;
+  host: string | null;
+  port: number | null;
+  database: string | null;
+  username: string | null;
+  file_path: string | null;
+  use_tls: boolean;
+  password: string | null;
+}
+
+/** What a real database looks like, read out of it (DBML-025). Structured, not DBML text. */
+export interface DbmlSchemaSnapshot {
+  tables: DbmlSnapshotTable[];
+  refs: DbmlSnapshotRef[];
+  enums: DbmlSnapshotEnum[];
+}
+
+export interface DbmlSnapshotTable {
+  schema: string;
+  name: string;
+  columns: DbmlSnapshotColumn[];
+  indexes: DbmlSnapshotIndex[];
+}
+
+export interface DbmlSnapshotColumn {
+  name: string;
+  /** As the engine spells it, arguments included — `varchar(120)`. */
+  type: string;
+  pk: boolean;
+  not_null: boolean;
+  unique: boolean;
+  increment: boolean;
+  default_value: string | null;
+}
+
+export interface DbmlSnapshotIndex {
+  name: string | null;
+  columns: string[];
+  unique: boolean;
+  pk: boolean;
+}
+
+export interface DbmlSnapshotRef {
+  from_schema: string;
+  from_table: string;
+  from_columns: string[];
+  to_schema: string;
+  to_table: string;
+  to_columns: string[];
+  on_delete: string | null;
+  on_update: string | null;
+}
+
+export interface DbmlSnapshotEnum {
+  schema: string;
+  name: string;
+  values: string[];
+}

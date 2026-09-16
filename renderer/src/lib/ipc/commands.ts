@@ -1,4 +1,4 @@
-import { open } from "../bridge/dialog";
+import { open, save } from "../bridge/dialog";
 import { host, invoke } from "../bridge/host";
 import { openUrl } from "../bridge/shell";
 import type {
@@ -761,6 +761,22 @@ export const writeFileText = (repoPath: string, relPath: string, content: string
  * dialog, which is what authorises writing outside the repo. */
 export const writeFileBytes = (path: string, contents: Uint8Array) =>
   invoke<void>("write_file_bytes", { path, contents: Array.from(contents) });
+
+/**
+ * Native "save file" dialog followed by the write, for anything the app generates — an exported
+ * schema, a collection, a snapshot. Resolves to the chosen path, or `null` when the user cancels.
+ *
+ * The dialog is served by the shell, because a modal window belongs to the process that owns one,
+ * and the write goes through `writeFileBytes` rather than `writeFileText` for the reason above: the
+ * chosen path is by definition anywhere, and only the dialog authorises it.
+ */
+export const saveTextFile = async (defaultName: string, contents: string) => {
+  const path = await save({ defaultPath: defaultName });
+  if (path === null) return null;
+
+  await writeFileBytes(path, new TextEncoder().encode(contents));
+  return path;
+};
 
 /** Moves a file or folder into `destDir` (repo-relative; `""` is the repo root), keeping its
  * name. Returns the new repo-relative path. */

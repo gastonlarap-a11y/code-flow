@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Database, FilePlus2, LayoutGrid, RotateCw, Save, Scan, ZoomIn, ZoomOut } from "lucide-react";
+import { Database, FilePlus2, LayoutGrid, RotateCw, Save, Scan, Upload, ZoomIn, ZoomOut } from "lucide-react";
 import { Editor, OVERFLOW_SAFE_OPTIONS, monaco } from "../../lib/monacoEditor";
 import { parseDbmlModel } from "../../lib/dbml/parse";
 import { emptyModel, type DbmlSchemaModel } from "../../lib/dbml/model";
@@ -13,6 +13,7 @@ import { IconButton } from "../common/IconButton";
 import { Button } from "../common/Button";
 import { DbmlCanvas, type DbmlCanvasHandle } from "./DbmlCanvas";
 import { NewDbmlModal } from "./NewDbmlModal";
+import { ExportDbmlModal } from "./ExportDbmlModal";
 
 /** One click of the zoom buttons. */
 const ZOOM_STEP = 1.2;
@@ -46,6 +47,7 @@ export function DbmlView() {
   const reset = useDbmlStore((s) => s.reset);
 
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const canvasRef = useRef<DbmlCanvasHandle>(null);
 
   // The module is repo-scoped, so its documents follow the selected project — including back to
@@ -121,6 +123,13 @@ export function DbmlView() {
           >
             {t("dbml.save")}
           </Button>
+          <IconButton
+            label="dbml.export.action"
+            icon={Upload}
+            size="sm"
+            disabled={activePath === null}
+            onClick={() => setExporting(true)}
+          />
           <IconButton label="dbml.reload" icon={RotateCw} size="sm" onClick={() => void loadDocuments(rootPath)} />
           <IconButton label="dbml.newDocument" icon={FilePlus2} size="sm" onClick={() => setCreating(true)} />
         </div>
@@ -207,6 +216,10 @@ export function DbmlView() {
       )}
 
       {creating && <NewDbmlModal rootPath={rootPath} onClose={() => setCreating(false)} />}
+
+      {exporting && activePath !== null && (
+        <ExportDbmlModal source={source} relPath={activePath} onClose={() => setExporting(false)} />
+      )}
     </div>
   );
 }

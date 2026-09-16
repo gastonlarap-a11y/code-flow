@@ -1,6 +1,6 @@
-import { open, save } from "../bridge/dialog";
+import { open } from "../bridge/dialog";
 import { invoke } from "../bridge/host";
-import { writeFileBytes } from "./commands";
+import { saveTextFile } from "./commands";
 import type {
   ApiCollection,
   ApiCookie,
@@ -224,17 +224,13 @@ export const apiPickFile = async (extensions: string[]) => {
   return typeof selected === "string" ? selected : null;
 };
 
-/** Native "save file" dialog; writes `contents` and returns the chosen path. */
-export const apiSaveFile = async (defaultName: string, contents: string) => {
-  const path = await save({ defaultPath: defaultName });
-  if (path === null) return null;
-
-  // writeFileBytes, not writeFileText: the latter is repo-scoped, and a save dialog's path is by
-  // definition anywhere the user pointed it. That unscoped write is DIVERGENCE-FILE-d, and this is
-  // the case it exists for.
-  await writeFileBytes(path, new TextEncoder().encode(contents));
-  return path;
-};
+/**
+ * Native "save file" dialog; writes `contents` and returns the chosen path.
+ *
+ * Kept as this feature's own name over the shared `saveTextFile`, which now holds the one
+ * implementation — the schema designer exports through the same door.
+ */
+export const apiSaveFile = (defaultName: string, contents: string) => saveTextFile(defaultName, contents);
 
 /** Reads a text file the user picked (collection import, CSV/JSON runner data). */
 export const apiReadTextFile = (path: string) => invoke<string>("api_read_text_file", { path });

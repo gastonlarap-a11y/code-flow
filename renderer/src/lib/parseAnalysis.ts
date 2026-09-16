@@ -4,9 +4,17 @@ export interface FindingLocation {
   endLine: number;
 }
 
+/** The five SonarQube-style severity words the model writes in the finding header, kept verbatim
+ * for display. `severity` below is the three-way bucket every piece of logic (the Quality Gate,
+ * the card colour) keys on; this is the fine-grained label the reader sees. `XLANG-001`. */
+export type SeverityLabel = "Blocker" | "Crítico" | "Mayor" | "Menor" | "Info";
+
 export interface AnalysisFinding {
   id: string;
   severity: "critical" | "warning" | "info";
+  /** The header's severity word, normalised to one of the five canonical labels — `null` when the
+   * model wrote something none of them match. Purely for display; `severity` drives every decision. */
+  severityLabel: SeverityLabel | null;
   type: string;
   category: string;
   subtitle: string;
@@ -34,11 +42,30 @@ export interface ParsedAnalysis {
   /** The model's own A–E self-assessment for this change, parsed from the leading
    * "📈 CALIDAD" line — `null` if it didn't follow that format. */
   grades: QualityGrades | null;
+  /** The model's own Quality Gate verdict, from the "🚦 Quality Gate:" line — `null` if absent.
+   * Advisory only: `computeQualityGatePassed(findings)` stays the gate of record (`XLANG-001`). */
+  selfReportedGate: "PASSED" | "FAILED" | null;
+  /** Bullets of the trailing "## 👍 Lo que está bien" section — what the change gets right. */
+  strengths: string[];
+  /** Bullets of the trailing "## 🗒️ Notas" section — non-blocking context that is not a finding. */
+  notes: string[];
 }
 
 const FOOTER_RE = /\n?---\n🤖[^\n]*$/;
 const GRADES_RE = /^📈\s*CALIDAD:\s*Fiabilidad=([A-E])\s+Seguridad=([A-E])\s+Mantenibilidad=([A-E])\s*$/m;
-const HEADER_RE = /^###\s*(🚨|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$/;
+/** The model's self-reported Quality Gate line, right after "📈 CALIDAD". Advisory: the gate of
+ * record is `computeQualityGatePassed(findings)`. `XLANG-001`. */
+const GATE_RE = /^🚦\s*Quality Gate:\s*(PASSED|FAILED)\s*$/im;
+/** The header's emoji alternation. Five since the WF-PR-REVIEWER re-sync (🔴 Blocker · 🚨 Crítico ·
+ * 🟠 Mayor · 🟡 Menor · 🔵 Info); ⚠️ and ℹ️ stay so every `review_runs` row written before it still
+ * parses. The severity *word* in the brackets is what wins — see `severityOf`. `XLANG-001`. */
+const HEADER_RE = /^###\s*(🔴|🚨|🟠|🟡|🔵|⚠️|ℹ️)\s*\[([^·\]]+)·([^\]]+)\]\s*([^·]+)·\s*(F-\d+)\s*$/;
+/** The two trailing sections the standard asks for after the findings. Accents optional, like
+ * `Ubicacion`. `XLANG-001`. */
+const STRENGTHS_HEADING_RE = /^[ \t]*##[ \t]*👍[ \t]*Lo que est[aá] bien[ \t]*$/im;
+const NOTES_HEADING_RE = /^[ \t]*##[ \t]*🗒️?[ \t]*Notas[ \t]*$/im;
+/** Either trailing-section heading — used to cut the afterword off the finding text. */
+const AFTERWORD_HEADING_RE = /^[ \t]*##[ \t]*(?:👍[ \t]*Lo que est[aá] bien|🗒️?[ \t]*Notas)[ \t]*$/im;
 
 /**
  * A finding's severity, from the word the model wrote — falling back to the emoji.
@@ -68,10 +95,61 @@ function severityOf(severity: string | undefined, emoji: string): AnalysisFindin
     case "info":
       return "info";
     default:
-      if (emoji === "🚨") return "critical";
-      if (emoji === "⚠️") return "warning";
+      if (emoji === "🔴" || emoji === "🚨") return "critical";
+      if (emoji === "🟠" || emoji === "⚠️") return "warning";
       return "info";
   }
+}
+
+/** The header's severity word normalised to one of the five canonical labels for display, falling
+ * back to the emoji when the word is unrecognised. Kept separate from {@link severityOf}: that one
+ * buckets into three for every decision, this one preserves the level the reader is shown.
+ * `XLANG-001` — `ReviewMemory.SeverityLabelOf` holds the same table. */
+function severityLabelOf(severity: string | undefined, emoji: string): SeverityLabel | null {
+  switch (severity?.trim().toLowerCase()) {
+    case "blocker":
+      return "Blocker";
+    case "crítico":
+    case "critico":
+      return "Crítico";
+    case "mayor":
+      return "Mayor";
+    case "menor":
+      return "Menor";
+    case "info":
+      return "Info";
+    default:
+      switch (emoji) {
+        case "🔴":
+          return "Blocker";
+        case "🚨":
+          return "Crítico";
+        case "🟠":
+        case "⚠️":
+          return "Mayor";
+        case "🟡":
+          return "Menor";
+        case "🔵":
+        case "ℹ️":
+          return "Info";
+        default:
+          return null;
+      }
+  }
+}
+
+/** The `- ` / `* ` bullets under one trailing "## …" section of a review — `## 👍 Lo que está bien`
+ * or `## 🗒️ Notas`. Stops at the next `## ` heading. */
+function bulletsUnder(afterword: string, headingRe: RegExp): string[] {
+  const m = afterword.match(headingRe);
+  if (!m || m.index === undefined) return [];
+  const rest = afterword.slice(m.index + m[0].length);
+  const nextHeading = rest.search(/^[ \t]*##[ \t]/m);
+  const body = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+  return body
+    .split("\n")
+    .map((l) => l.replace(/^[ \t]*[-*][ \t]+/, "").trim())
+    .filter((l) => l.length > 0);
 }
 
 /** Parses "{file}:{startLine}-{endLine}" (or a single "{file}:{line}") from the finding's
@@ -111,6 +189,26 @@ export function parseAnalysis(raw: string): ParsedAnalysis {
     text = (text.slice(0, gradesMatch.index) + text.slice(gradesMatch.index + gradesMatch[0].length)).trim();
   }
 
+  let selfReportedGate: ParsedAnalysis["selfReportedGate"] = null;
+  const gateMatch = text.match(GATE_RE);
+  if (gateMatch && gateMatch.index !== undefined) {
+    selfReportedGate = gateMatch[1]!.toUpperCase() as "PASSED" | "FAILED";
+    text = (text.slice(0, gateMatch.index) + text.slice(gateMatch.index + gateMatch[0].length)).trim();
+  }
+
+  // The two trailing "## …" sections come after the findings, so they have to be lifted out
+  // *before* the finding loop — otherwise the last finding's block swallows them, and a number in
+  // a "Lo que está bien" bullet gets read as its confidence.
+  let strengths: string[] = [];
+  let notes: string[] = [];
+  const afterwordMatch = text.match(AFTERWORD_HEADING_RE);
+  if (afterwordMatch && afterwordMatch.index !== undefined) {
+    const afterword = text.slice(afterwordMatch.index);
+    strengths = bulletsUnder(afterword, STRENGTHS_HEADING_RE);
+    notes = bulletsUnder(afterword, NOTES_HEADING_RE);
+    text = text.slice(0, afterwordMatch.index).trimEnd();
+  }
+
   const lines = text.split("\n");
   const findings: AnalysisFinding[] = [];
   const summaryLines: string[] = [];
@@ -148,6 +246,7 @@ export function parseAnalysis(raw: string): ParsedAnalysis {
     findings.push({
       id: id!.trim(),
       severity: severityOf(severityRaw, emoji!),
+      severityLabel: severityLabelOf(severityRaw, emoji!),
       type: typeRaw!.trim(),
       category: categoryRaw!.trim(),
       subtitle: (subtitleMatch?.[1] ?? block.split("\n")[0] ?? "").trim(),
@@ -160,26 +259,43 @@ export function parseAnalysis(raw: string): ParsedAnalysis {
     });
   }
 
-  return { findings, summary: summaryLines.join("\n").trim(), footer, grades };
+  return { findings, summary: summaryLines.join("\n").trim(), footer, grades, selfReportedGate, strengths, notes };
 }
 
+/** Fallback emoji when a finding has no `severityLabel` (an unrecognised severity word on an
+ * `⚠️`/`ℹ️` header from an old `review_runs` row). Three buckets, like `severity`. */
 const SEVERITY_EMOJI: Record<AnalysisFinding["severity"], string> = {
   critical: "🚨",
-  warning: "⚠️",
-  info: "ℹ️",
+  warning: "🟠",
+  info: "🔵",
 };
 
-const SEVERITY_DOT: Record<AnalysisFinding["severity"], string> = {
-  critical: "🔴",
-  warning: "🟡",
-  info: "🔵",
+/** The five-level scale, keyed by the display label — matches the header emoji the standard now
+ * asks for and `engine-contract.md`'s visual vocabulary. Used for the comment header and the
+ * summary table's dot. */
+const SEVERITY_LABEL_EMOJI: Record<SeverityLabel, string> = {
+  Blocker: "🔴",
+  Crítico: "🚨",
+  Mayor: "🟠",
+  Menor: "🟡",
+  Info: "🔵",
 };
 
 const SEVERITY_LABEL_ES: Record<AnalysisFinding["severity"], string> = {
   critical: "Crítico",
-  warning: "Menor",
+  warning: "Mayor",
   info: "Info",
 };
+
+/** The finding's five-level emoji, falling back to the three-bucket one. */
+export function findingEmoji(finding: AnalysisFinding): string {
+  return finding.severityLabel ? SEVERITY_LABEL_EMOJI[finding.severityLabel] : SEVERITY_EMOJI[finding.severity];
+}
+
+/** The finding's severity word for display, falling back to the three-bucket label. */
+export function findingSeverityLabel(finding: AnalysisFinding): string {
+  return finding.severityLabel ?? SEVERITY_LABEL_ES[finding.severity];
+}
 
 export function locationLabel(location: FindingLocation): string {
   return `${location.file}:${location.startLine}${location.endLine !== location.startLine ? `-${location.endLine}` : ""}`;
@@ -198,7 +314,11 @@ export function computeQualityGatePassed(findings: AnalysisFinding[]): boolean {
  * line on the PR). Used to post a PR review as one comment thread per finding instead of one
  * giant comment. */
 export function formatFindingAsComment(finding: AnalysisFinding): string {
-  const lines = [`### ${SEVERITY_EMOJI[finding.severity]} [${finding.type}] ${finding.category} · ${finding.id}`, "", finding.subtitle];
+  const lines = [
+    `### ${findingEmoji(finding)} [${findingSeverityLabel(finding)} · ${finding.type}] ${finding.category} · ${finding.id}`,
+    "",
+    finding.subtitle,
+  ];
   if (finding.why) lines.push("", `💭 **Por qué:** ${finding.why}`);
   if (finding.suggestion) lines.push("", `💡 **Sugerencia:** ${finding.suggestion}`);
   if (finding.exampleCode) lines.push("", "🛠️ Ejemplo de solución:", `\`\`\`${finding.exampleLang}`, finding.exampleCode, "```");
@@ -243,6 +363,7 @@ export function buildFixpack(parsed: ParsedAnalysis, prId: number): string {
   const hallazgos = parsed.findings.map((f) => ({
     id: f.id,
     severidad: f.severity,
+    severidad_label: findingSeverityLabel(f),
     tipo: f.type,
     categoria: f.category,
     archivo: f.location?.file ?? null,
@@ -254,7 +375,14 @@ export function buildFixpack(parsed: ParsedAnalysis, prId: number): string {
     confianza: f.confidence,
   }));
   return JSON.stringify(
-    { schema: "pr-review-fixpack/v1", pr: prId, generado: new Date().toISOString(), hallazgos },
+    {
+      schema: "pr-review-fixpack/v1",
+      pr: prId,
+      generado: new Date().toISOString(),
+      hallazgos,
+      fortalezas: parsed.strengths,
+      notas: parsed.notes,
+    },
     null,
     2,
   );
@@ -274,38 +402,54 @@ export function buildFixpack(parsed: ParsedAnalysis, prId: number): string {
  * meaningless badge. When the two sets differ, the count says so, so nobody reads a FAILED gate
  * over a one-row table as a contradiction.
  */
+const SEVERITY_LABEL_ORDER: readonly SeverityLabel[] = ["Blocker", "Crítico", "Mayor", "Menor", "Info"];
+
+/** Appends "## 👍 Lo que está bien" / "## 🗒️ Notas" bullet blocks when the review carried them. */
+function appendAfterword(lines: string[], parsed: ParsedAnalysis): void {
+  if (parsed.strengths.length > 0) {
+    lines.push("", "## 👍 Lo que está bien", ...parsed.strengths.map((s) => `- ${s}`));
+  }
+  if (parsed.notes.length > 0) {
+    lines.push("", "## 🗒️ Notas", ...parsed.notes.map((n) => `- ${n}`));
+  }
+}
+
 export function formatSummaryComment(parsed: ParsedAnalysis, date: string, posted: AnalysisFinding[]): string {
   const passed = computeQualityGatePassed(parsed.findings);
-  const lines = [`### 📋 Revisión automatizada (pr-review) — ${date}`, "", `🛡️ **Quality Gate:** ${passed ? "✅ PASSED" : "❌ FAILED"}`];
+  const lines = [`### 📋 Revisión automatizada (pr-review) — ${date}`, "", `🚦 **Quality Gate:** ${passed ? "✅ PASSED" : "❌ FAILED"}`];
   if (parsed.grades) {
     lines.push(
-      `🔵 Fiabilidad **${parsed.grades.reliability}** · 🔒 Seguridad **${parsed.grades.security}** · 🔧 Mantenibilidad **${parsed.grades.maintainability}**`,
+      `🛡️ Fiabilidad **${parsed.grades.reliability}** · 🔒 Seguridad **${parsed.grades.security}** · 🧹 Mantenibilidad **${parsed.grades.maintainability}**`,
     );
   }
   lines.push("");
 
   if (parsed.findings.length === 0) {
     lines.push(parsed.summary || "✅ No se encontraron problemas en este cambio.");
+    appendAfterword(lines, parsed);
     return lines.join("\n");
   }
   if (posted.length === 0) {
     lines.push(
       `La revisión encontró ${parsed.findings.length} hallazgo(s), ninguno de los cuales se publicó como comentario.`,
     );
+    appendAfterword(lines, parsed);
     return lines.join("\n");
   }
 
-  const bySeverity = (sev: AnalysisFinding["severity"]) => posted.filter((f) => f.severity === sev).length;
-  const counts = (["critical", "warning", "info"] as const)
-    .map((sev) => ({ sev, n: bySeverity(sev) }))
+  const counts = SEVERITY_LABEL_ORDER.map((label) => ({
+    label,
+    n: posted.filter((f) => findingSeverityLabel(f) === label).length,
+  }))
     .filter(({ n }) => n > 0)
-    .map(({ sev, n }) => `${n} ${SEVERITY_LABEL_ES[sev]}`);
+    .map(({ label, n }) => `${n} ${label}`);
   const outOf = posted.length < parsed.findings.length ? ` de ${parsed.findings.length}` : "";
   lines.push(`**Hallazgos posteados:** ${posted.length}${outOf} (${counts.join(" · ")})`, "");
   lines.push("| | ID | Hallazgo | Archivo | Confianza |", "|---|---|---|---|---|");
   for (const f of posted) {
     const loc = f.location ? `\`${locationLabel(f.location)}\`` : "—";
-    lines.push(`| ${SEVERITY_DOT[f.severity]} | ${f.id} | ${f.type} / ${f.category} | ${loc} | ${f.confidence ?? "—"} |`);
+    lines.push(`| ${findingEmoji(f)} | ${f.id} | ${f.type} / ${f.category} | ${loc} | ${f.confidence ?? "—"} |`);
   }
+  appendAfterword(lines, parsed);
   return lines.join("\n");
 }

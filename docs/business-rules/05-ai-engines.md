@@ -692,12 +692,13 @@ Ported from the transversal review runbook this engine descends from (SonarQube-
 Quality Gate, six review lenses); seeded per-workspace and editable from Settings, project-agnostic
 by design (repository-specific rules live in each workspace's review contexts/MD files, folded in
 as "PROJECT REVIEW CONTEXT" rather than replacing this standard). Its **OUTPUT FORMAT** section —
-the leading `📈 CALIDAD:` line; the `### {emoji} [{Severidad} · {Tipo}] {Categoría} · F-NNN`
-finding header, `{emoji}` ∈ 🚨/⚠️/ℹ️; and the `📍 Ubicación` / `💭 Por qué` / `💡 Sugerencia` /
-`🛠️` / `🎯 Confianza` fields — is a byte-level contract two separate frontend parsers depend on to
-anchor comments to exact PR diff lines; this document does not describe those parsers (that
-belongs to whichever document owns `parseAnalysis.ts` and the PR-comment poster), only that
-changing this format silently breaks both. Not invoked anywhere in the nine files this document
+the leading `📈 CALIDAD:` line; the `🚦 Quality Gate:` line; the
+`### {emoji} [{Severidad} · {Tipo}] {categoría} · F-NNN` finding header, `{emoji}` ∈
+🔴/🚨/🟠/🟡/🔵 (⚠️/ℹ️ still parsed, older rows); the `📍 Ubicación` / `💭 Por qué` / `💡 Sugerencia` /
+`🛠️` / `🎯 Confianza` fields; and the trailing `## 👍 Lo que está bien` / `## 🗒️ Notas` sections —
+is a byte-level contract two separate frontend parsers depend on to anchor comments to exact PR diff
+lines; this document does not describe those parsers (that belongs to whichever document owns
+`parseAnalysis.ts` and the PR-comment poster), only that changing this format silently breaks both. Not invoked anywhere in the nine files this document
 owns — its call site (seeding/serving a workspace's editable review standard) is in `src/CodeFlow.App/Review/ReviewCommands.cs`/
 `src/CodeFlow.App/Workspaces/WorkspaceCommands.cs`, out of scope here.
 
@@ -1161,7 +1162,7 @@ ends, with no new IPC surface and no migration. A richer breakdown in the panel 
 
 ### AI-022 `review_level_directive`: básico / completo / ultra
 **Implementation**: `src/CodeFlow.App/Ai/AiOperations.cs`
-**Behaviour**: Appended to the end of the review prompt (after the base template, so it overrides any depth the standard implies). `"basico"`/`"básico"` → confidence ≥ 75, Blocker/Crítico only, terse. Unknown/empty/anything else → `"completo"` → confidence ≥ 60 (Blocker ≥ 50), all severities except Info. `"ultra"` → confidence ≥ 50, all six lenses including Info/nitpicks.
+**Behaviour**: Appended to the end of the review prompt (after the base template, so it overrides any depth the standard implies). `"basico"`/`"básico"` → two lenses (correctness, security), `Blocker` at confidence ≥ 50 and `Crítico` at ≥ 75, `Mayor`/`Menor`/`Info` ignored, terse. Unknown/empty/anything else → `"completo"` → five lenses, confidence ≥ 60 (Blocker ≥ 50), all severities except Info. `"ultra"` → confidence ≥ 50, all six lenses including Info/nitpicks.
 **Inputs / outputs**: `(string level, bool explorable) -> &'static str` (a directive block).
 **Edge cases**: any unrecognised level string silently becomes `completo` — never an error.
 **Frontend dependency**: the review level selector, whatever it is named on the frontend.
@@ -1184,11 +1185,18 @@ to one of two blocks:
 `basico` and `completo` are unaffected by the flag.
 
 The **instructions** in all the review prompts are now English, per the repository's own rule. What
-stays Spanish, byte for byte, is everything the model is asked to *emit* and everything a parser
-matches on: the `## NIVEL DE REVISIÓN ACTIVO:` headers, `📈 CALIDAD:`, `📍 Ubicación:`,
-`💭 Por qué:`, `💡 Sugerencia:`, `🎯 Confianza:`, the severity and type words, and the standing order
-to answer in Spanish. A workspace that already stored the Spanish methodology keeps it — `STORE-012`
-only falls back to the built-in when the row is blank.
+stays Spanish (or a fixed literal), byte for byte, is everything the model is asked to *emit* and
+everything a parser matches on: the `## NIVEL DE REVISIÓN ACTIVO:` headers, `📈 CALIDAD:`,
+`🚦 Quality Gate:`, `📍 Ubicación:`, `💭 Por qué:`, `💡 Sugerencia:`, `🎯 Confianza:`, the five
+severity emoji (`🔴 🚨 🟠 🟡 🔵`), the `## 👍 Lo que está bien` / `## 🗒️ Notas` section headers, the
+severity and type words, and the standing order to answer in Spanish. A workspace that already stored
+the Spanish methodology keeps it — `STORE-012` only falls back to the built-in when the row is blank;
+a workspace still holding a *pristine* older built-in is refreshed by the migration
+(`RefreshUneditedSeededPrompts`, `SeededPromptHistory`).
+
+The five-emoji severity scale, the `🚦 Quality Gate` line and the two trailing sections came from
+re-syncing the built-in review prompts with the source review runbook (WF-PR-REVIEWER); the byte
+contract is `13-cross-language-contracts.md` `XLANG-001`.
 
 ### AI-023 `review_pull_request`
 **Implementation**: `src/CodeFlow.App/Ai/AiOperations.cs`

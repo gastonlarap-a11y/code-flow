@@ -2,7 +2,7 @@
   "name": "codeflow-shell",
   "private": true,
   "license": "MIT",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Electron shell for CodeFlow: window, tray, native menu, and the bridge to the .NET core",
   "main": "dist/main.js",
   "scripts": {
@@ -15,13 +15,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.3.0",
-    "electron": "44.0.0",
-    "electron-builder": "26.15.7",
-    "eslint": "^10.9.1",
+    "@types/node": "^26.5.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.16.1",
+    "eslint": "^10.10.0",
     "globals": "^17.11.0",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.68.0"
+    "typescript-eslint": "^8.70.0"
   },
   "packageManager": "pnpm@11.20.0"
 }

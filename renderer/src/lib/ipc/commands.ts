@@ -11,6 +11,7 @@ import type {
   CommitFileInfo,
   CommitInfo,
   ConflictFile,
+  DbmlAssistMode,
   DbmlTablePosition,
   FileDiffInfo,
   FileEntry,
@@ -824,6 +825,20 @@ export const dbmlSavePositions = (projectId: string, relPath: string, positions:
 /** Forgets every position of one document, so the auto-layout places all of it again. */
 export const dbmlClearLayout = (projectId: string, relPath: string) =>
   invoke<void>("dbml_clear_layout", { projectId, relPath });
+
+/**
+ * Runs the schema designer's assistant over a document (DBML-016).
+ *
+ * `edit` answers with the whole schema rewritten, which `checkProposal` parses before anything is
+ * offered; `review` and `explain` answer with Spanish markdown that is read, never applied. The
+ * instruction is optional for those two and required for `edit`, which the sidecar enforces — asking
+ * to apply nothing has no meaning.
+ *
+ * `runId` is minted by the caller with `newRunId`, and is what the stop button and the `ai:output`
+ * log are keyed on. Omitting it runs untracked.
+ */
+export const dbmlAssist = (mode: DbmlAssistMode, dbml: string, instruction: string, runId?: string) =>
+  invoke<string>("dbml_assist", { mode, dbml, instruction, runId });
 
 export interface SearchHit {
   path: string;

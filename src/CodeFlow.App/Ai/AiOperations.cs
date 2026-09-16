@@ -601,7 +601,12 @@ internal static class AiOperations
         string.IsNullOrWhiteSpace(template) ? builtin : template;
 
     /// <summary>Truncates to a number of Unicode scalars, as 1.7.2's <c>chars().take()</c> does.</summary>
-    private static string Cap(string text, int maxScalars)
+    /// <remarks>
+    /// Reachable from the other features that assemble a payload (<c>Dbml/DbmlAssistant.cs</c>)
+    /// rather than copied: a cut that lands between the halves of a surrogate pair is the kind of
+    /// bug a second implementation reintroduces.
+    /// </remarks>
+    internal static string Cap(string text, int maxScalars)
     {
         if (text.Length <= maxScalars)
         {

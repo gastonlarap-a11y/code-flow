@@ -118,6 +118,27 @@ public static class Prompts
     /// </remarks>
     internal static string DefaultInlineEditPrompt { get; } = Load("DEFAULT_INLINE_EDIT_PROMPT");
 
+    /// <summary>The system prompt for rewriting a DBML document to an instruction.</summary>
+    /// <remarks>
+    /// Internal and not overridable, like the other two whose output is consumed rather than read:
+    /// what comes back replaces the user's schema, so the "return the whole document, no fence, no
+    /// prose" contract is the app's to keep, not a template to edit (<c>DBML-016</c>). The renderer
+    /// parses the reply before offering it, which is what makes a model that ignores the contract a
+    /// rejected proposal rather than a corrupted file.
+    /// </remarks>
+    internal static string DbmlEditPrompt { get; } = Load("DBML_EDIT_PROMPT");
+
+    /// <summary>The system prompt for reviewing a schema's design.</summary>
+    /// <remarks>
+    /// Answers in Spanish, like every other AI answer this app shows — see the exemption documented
+    /// on this class. Its output is prose for a person, so nothing parses it and its shape is
+    /// guidance rather than a contract.
+    /// </remarks>
+    internal static string DbmlReviewPrompt { get; } = Load("DBML_REVIEW_PROMPT");
+
+    /// <summary>The system prompt for explaining what a schema models.</summary>
+    internal static string DbmlExplainPrompt { get; } = Load("DBML_EXPLAIN_PROMPT");
+
     private static string ReviewLevelBasico { get; } = Load("REVIEW_LEVEL_BASICO");
 
     private static string ReviewLevelCompleto { get; } = Load("REVIEW_LEVEL_COMPLETO");

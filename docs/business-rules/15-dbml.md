@@ -3,13 +3,16 @@
 ## Scope
 
 - `src/CodeFlow.App/Dbml/` — `DbmlCommands.cs`, `DbmlDocuments.cs`, `DbmlLayoutStore.cs`,
-  `DbmlTablePosition.cs`, `DbmlJsonContext.cs`
+  `DbmlAssistant.cs`, `DbmlTablePosition.cs`, `DbmlJsonContext.cs`
+- `src/CodeFlow.App/Ai/Prompts/` — `DBML_EDIT_PROMPT.txt`, `DBML_REVIEW_PROMPT.txt`,
+  `DBML_EXPLAIN_PROMPT.txt`
 - `renderer/src/lib/dbml/` — `parse.ts` (the `@dbml/core` boundary), `model.ts`, `layout.ts`,
   `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`,
-  `schema.ts` (the Editor preview's adapter), `documentPath.ts`
+  `schema.ts` (the Editor preview's adapter), `documentPath.ts`, `assist.ts`
 - `renderer/src/lib/dbml/exporters/` — `sql.ts`, `prisma.ts`
 - `renderer/src/state/dbmlStore.ts`
-- `renderer/src/components/dbml/` — `DbmlView.tsx`, `NewDbmlModal.tsx`
+- `renderer/src/components/dbml/` — `DbmlView.tsx`, `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`,
+  `DbmlAiModal.tsx`
 
 A workbench for [DBML](https://dbml.dbdiagram.io) documents: the `.dbml` files of the open folder,
 an editor, and the entity diagram the text produces, updated as it is typed.
@@ -34,6 +37,7 @@ table. One line each:
 - `dbml_load_layout` — the positions a person gave one document's tables.
 - `dbml_save_positions` — stores positions, moving any table that already had one.
 - `dbml_clear_layout` — forgets one document's positions, so the auto-layout places all of it again.
+- `dbml_assist` — runs one of three AI modes over the document's text.
 
 ## The `@dbml/core` boundary
 
@@ -346,11 +350,65 @@ already uses is suffixed. A type with no Prisma equivalent becomes `String` unde
 **Markers**: none. The inverse field names come from `inflect.ts` (`DBML-010`), so they inherit its
 heuristics — an awkward plural in a schema is a field name, never a wrong relation.
 
+---
+
+### DBML-016 The assistant is one command with three modes, and reaches for nothing
+**Implementation**: `src/CodeFlow.App/Dbml/DbmlAssistant.cs` · `src/CodeFlow.App/Ai/Prompts/DBML_*_PROMPT.txt`
+**Behaviour**: `dbml_assist` takes `mode`, the document's text, and an instruction. The mode selects
+one of three embedded system prompts and nothing else: `edit` is asked for the whole document
+rewritten, with no prose and no fence; `review` judges the design; `explain` describes it. The two
+that are read answer in Spanish, like every other AI answer the app shows. The ask rides on argv and
+the schema on stdin (`AI-002`), and only `edit`'s reply goes through `StripCodeFence` — stripping a
+review's first fenced block would eat a finding.
+
+Routing is its own task key, `dbml`, so a schema can be pointed at a different model than a code
+review (`XLANG-004`). The toolset is bound to the **empty list**, which the engines read as "no tools
+at all": the model is handed the whole document and asked about that document, so a tool call could
+only re-read what it already has or wander into a folder that need not be a repository. A user who
+has set a toolset for the provider in Settings keeps it.
+**Inputs / outputs**: `(mode, dbml, instruction?, runId?)` → DBML text for `edit`, Spanish markdown
+otherwise.
+**Edge cases**: an empty document is refused. A schema over 60 000 characters is refused rather than
+truncated — `edit` is asked to return the whole document, so a dropped tail would come back as a
+proposal that deletes every table past the cut. `edit` with a blank instruction is refused, because
+applying nothing has no meaning; the other two stand on their own. The instruction is capped at
+4 000 characters, by Unicode scalar. An unknown mode names itself in the error, which is what a
+renderer/backend drift looks like from a log.
+**Frontend dependency**: `components/dbml/DbmlAiModal.tsx`, `lib/dbml/assist.ts`.
+**Markers**: none.
+
+---
+
+### DBML-017 A proposal is parsed before it is offered, and applied only to the buffer
+**Implementation**: `renderer/src/lib/dbml/assist.ts` · `renderer/src/components/dbml/DbmlAiModal.tsx`
+**Behaviour**: **Nothing the model returns is trusted to be DBML.** An `edit` reply is run through
+the same parser the canvas uses (`DBML-006`) before the dialog offers it, so an engine that answers
+with an apology, a fragment or half a document produces a rejected proposal rather than a corrupted
+schema. `checkProposal` answers with one of four states — `ok`, `invalid`, `empty`, `unchanged` —
+modelled as a union, so a proposal that must not be applied is not representable as one that can.
+
+Accepting puts the text in the **editor buffer**, never on disk: the save button and Ctrl+Z keep
+owning it, the same bargain `InlineEditWidget` makes. Review and explain answers are rendered as
+sanitised markdown and can be applied to nothing.
+**Inputs / outputs**: `(current, answer)` → `DbmlProposal`.
+**Edge cases**: a reply identical to the document after normalising line endings and trailing
+whitespace is `unchanged`, not an edit — the prompt tells the model to return the schema untouched
+when it cannot apply the instruction, and offering that would produce a whitespace-only change. An
+**open document that does not parse is not an error**: that is the state the editor is in for most
+of an edit, and the proposal is still offerable with every table reading as added. The table delta
+is shown above the diff because a model that obeys the format and returns three tables of seven has
+lost the document in a way only a scrolled diff would reveal; a non-empty `removed` list is painted
+as a danger chip. The rejected answer is shown verbatim under the error, so "it was rejected" and
+"here is what it said" are not the same screen.
+**Frontend dependency**: none outward.
+**Markers**: none.
+
 ## Test coverage
 
 | Test | Source | Kind |
 |---|---|---|
-| `DbmlCommandsTests` (20) | `src/CodeFlow.App/Dbml/` | scenario — real temp directories and a real migrated database |
+| `DbmlCommandsTests` (21) | `src/CodeFlow.App/Dbml/` | scenario — real temp directories and a real migrated database |
+| `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
 | `parse.test.ts` (8) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core` |
 | `schema.test.ts` (3) | `renderer/src/lib/dbml/schema.ts` | adapter smoke |
@@ -361,6 +419,7 @@ heuristics — an awkward plural in a schema is a field name, never a wrong rela
 | `relationPhrase.test.ts` (8) | `renderer/src/lib/dbml/relationPhrase.ts` | pure — sentence choice and agreement |
 | `exporters/sql.test.ts` (5) | `renderer/src/lib/dbml/exporters/sql.ts` | boundary over `@dbml/core` |
 | `exporters/prisma.test.ts` (16) | `renderer/src/lib/dbml/exporters/prisma.ts` | pure — types, keys, both ends of every relation |
+| `assist.test.ts` (9) | `renderer/src/lib/dbml/assist.ts` | pure — the four proposal states and the table delta |
 | `viewport.test.ts` (5) | `renderer/src/lib/dbml/viewport.ts` | pure |
 | `documentPath.test.ts` (12) | `renderer/src/lib/dbml/documentPath.ts` | pure |
 | `dbmlStore.test.ts` (18) | `renderer/src/state/dbmlStore.ts` | store, `lib/ipc/commands` mocked |

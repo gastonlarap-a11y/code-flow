@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using CodeFlow.Ai;
 using CodeFlow.Dbml;
 using CodeFlow.Ipc;
 using CodeFlow.Storage;
@@ -24,16 +25,14 @@ public sealed class DbmlCommandsTests : IDisposable
 
     /// <summary>Every command this domain owns, from <c>01-ipc-surface.md</c>.</summary>
     private static readonly string[] Expected =
-        ["dbml_list_documents", "dbml_load_layout", "dbml_save_positions", "dbml_clear_layout"];
+        ["dbml_list_documents", "dbml_load_layout", "dbml_save_positions", "dbml_clear_layout", "dbml_assist"];
 
     [Fact]
     public void The_commands_this_slice_owns_are_registered_under_their_contract_names()
     {
-        var registry = new CommandRegistry().AddDbmlCommands(_database.Handle);
-
         Assert.Equal(
             Expected.OrderBy(n => n, StringComparer.Ordinal),
-            registry.Names.OrderBy(n => n, StringComparer.Ordinal));
+            Registry().Names.OrderBy(n => n, StringComparer.Ordinal));
     }
 
     [Theory]
@@ -41,6 +40,7 @@ public sealed class DbmlCommandsTests : IDisposable
     [InlineData("dbml_load_layout", "projectId")]
     [InlineData("dbml_save_positions", "projectId")]
     [InlineData("dbml_clear_layout", "projectId")]
+    [InlineData("dbml_assist", "mode")]
     public async Task A_missing_argument_is_named_in_the_error(string command, string argument)
     {
         var error = await Assert.ThrowsAnyAsync<Exception>(async () => await InvokeAsync(command, new { }));
@@ -237,6 +237,14 @@ public sealed class DbmlCommandsTests : IDisposable
         Assert.Contains("FOREIGN KEY", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The slice as <c>Program.cs</c> wires it. The AI plumbing is real but never reached: only
+    /// <c>dbml_assist</c> touches it, and that command's own behaviour is
+    /// <see cref="DbmlAssistantTests"/>'s, driven through the engine seam instead of a subprocess.
+    /// </summary>
+    private CommandRegistry Registry() => new CommandRegistry()
+        .AddDbmlCommands(_database.Handle, new AiRunRegistry((_, _, _) => ValueTask.CompletedTask), new HttpClient());
+
     private string CreateProject() =>
         _database.Use(c =>
         {
@@ -267,8 +275,7 @@ public sealed class DbmlCommandsTests : IDisposable
     /// </summary>
     private async ValueTask<string> InvokeAsync(string command, object parameters)
     {
-        var registry = new CommandRegistry().AddDbmlCommands(_database.Handle);
-        Assert.True(registry.TryGet(command, out var handler));
+        Assert.True(Registry().TryGet(command, out var handler));
 
         using var arguments = JsonDocument.Parse(JsonSerializer.Serialize(parameters));
         var reply = await handler(arguments.RootElement, TestContext.Current.CancellationToken);

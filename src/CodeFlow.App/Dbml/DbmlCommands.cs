@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using CodeFlow.Ai;
 using CodeFlow.Ipc;
 using CodeFlow.Storage;
 using Microsoft.Data.Sqlite;
@@ -18,13 +19,14 @@ namespace CodeFlow.Dbml;
 /// layout and export all live in the renderer, where <c>@dbml/core</c> is.
 /// </para>
 /// <para>
-/// What is left is what the renderer cannot do: walking a folder for documents, and remembering
-/// where a person put each table.
+/// What is left is what the renderer cannot do: walking a folder for documents, remembering where a
+/// person put each table, and running an engine over the schema.
 /// </para>
 /// </remarks>
 public static class DbmlCommands
 {
-    public static CommandRegistry AddDbmlCommands(this CommandRegistry registry, Database database) =>
+    public static CommandRegistry AddDbmlCommands(
+        this CommandRegistry registry, Database database, AiRunRegistry runs, HttpClient http) =>
         registry
             .Add("dbml_list_documents", (p, ct) =>
             {
@@ -51,7 +53,44 @@ public static class DbmlCommands
                 var projectId = Arg(p, "projectId");
                 var relPath = Arg(p, "relPath");
                 return WriteUnit(database, c => DbmlLayoutStore.Clear(c, projectId, relPath), ct);
+            })
+            // ---------- the assistant (DBML-016) ----------
+            .Add("dbml_assist", async (p, ct) =>
+            {
+                var mode = Arg(p, "mode");
+                var dbml = Arg(p, "dbml");
+
+                // Optional: a review and an explanation stand on their own, and the edit mode's own
+                // requirement is enforced where the modes are told apart, not here.
+                var instruction = Optional(p, "instruction") ?? string.Empty;
+
+                var config = await database
+                    .ReadAsync(c => DbmlAssistant.Bound(c, AiRouting.Resolve(c, "dbml")), ct)
+                    .ConfigureAwait(false);
+
+                var answer = await DbmlAssistant.AssistAsync(
+                    AiEngineRunner.Bind(runs, http), config, mode, dbml, instruction, Run(p), ct)
+                    .ConfigureAwait(false);
+
+                return JsonSerializer.SerializeToUtf8Bytes(answer, DbmlJsonContext.Default.String);
             });
+
+    /// <summary>
+    /// The run this command belongs to, from the id the renderer minted before invoking.
+    /// </summary>
+    /// <remarks>
+    /// Absent or blank means untracked: no <c>ai:output</c> events and no stop button, the same
+    /// <see langword="null"/> run <see cref="AiCommands"/> passes.
+    /// </remarks>
+    private static AiRunContext? Run(JsonElement parameters) =>
+        Optional(parameters, "runId") is { } runId && !string.IsNullOrWhiteSpace(runId)
+            ? new AiRunContext(runId)
+            : null;
+
+    private static string? Optional(JsonElement parameters, string name) =>
+        parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string Arg(JsonElement parameters, string name) =>
         parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

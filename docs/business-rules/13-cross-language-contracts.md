@@ -174,14 +174,17 @@ it is not a duplicated literal, but it is a downstream dependency on the untagge
 ---
 
 ### XLANG-004 The AI task keys and the settings-key templates
-**Implementation**: `src/CodeFlow.App/Ai/AiCommands.cs` (`AiTask.key()`) · `renderer/src/lib/aiTasks.ts`
-**Behaviour**: Eight task keys form the settings namespace for per-task AI routing. The
+**Implementation**: `src/CodeFlow.App/Ai/AiRouting.cs` (`Tasks`) · `renderer/src/lib/aiTasks.ts`
+**Behaviour**: Ten task keys form the settings namespace for per-task AI routing. The
 frontend declares them independently and its own comment states they "must match the sidecar's
-`AiTask.key()`".
+`AiTask` keys".
 
 `
-chat  commit  analyze  review  pr_description  fix  conflict  inline
+chat  commit  analyze  review  pr_description  fix  conflict  inline  ticket_review  dbml
 `
+
+`AiRoutingTests.The_ten_task_keys_are_verbatim` spells the list out rather than reading it from the
+code under test, which is what makes a rename fail loudly instead of orphaning stored routing.
 
 Two key templates are built from them, on both sides:
 

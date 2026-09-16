@@ -22,6 +22,7 @@ export const AI_TASKS: AiTaskDef[] = [
   { key: "fix", labelKey: "task.fix", hintKey: "task.fixHint", agenticOnly: true },
   { key: "conflict", labelKey: "task.conflict", hintKey: "task.conflictHint" },
   { key: "inline", labelKey: "task.inline", hintKey: "task.inlineHint" },
+  { key: "dbml", labelKey: "task.dbml", hintKey: "task.dbmlHint" },
 ];
 
 export const AI_TASK_KEYS = AI_TASKS.map((t) => t.key);

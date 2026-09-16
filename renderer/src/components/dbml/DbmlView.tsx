@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Database, FilePlus2, LayoutGrid, RotateCw, Save, Scan, Upload, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Database,
+  FilePlus2,
+  LayoutGrid,
+  RotateCw,
+  Save,
+  Scan,
+  Sparkles,
+  Upload,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Editor, OVERFLOW_SAFE_OPTIONS, monaco } from "../../lib/monacoEditor";
 import { parseDbmlModel } from "../../lib/dbml/parse";
 import { emptyModel, type DbmlSchemaModel } from "../../lib/dbml/model";
@@ -14,6 +25,7 @@ import { Button } from "../common/Button";
 import { DbmlCanvas, type DbmlCanvasHandle } from "./DbmlCanvas";
 import { NewDbmlModal } from "./NewDbmlModal";
 import { ExportDbmlModal } from "./ExportDbmlModal";
+import { DbmlAiModal } from "./DbmlAiModal";
 
 /** One click of the zoom buttons. */
 const ZOOM_STEP = 1.2;
@@ -48,6 +60,7 @@ export function DbmlView() {
 
   const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [asking, setAsking] = useState(false);
   const canvasRef = useRef<DbmlCanvasHandle>(null);
 
   // The module is repo-scoped, so its documents follow the selected project — including back to
@@ -123,6 +136,13 @@ export function DbmlView() {
           >
             {t("dbml.save")}
           </Button>
+          <IconButton
+            label="dbml.ai.action"
+            icon={Sparkles}
+            size="sm"
+            disabled={activePath === null}
+            onClick={() => setAsking(true)}
+          />
           <IconButton
             label="dbml.export.action"
             icon={Upload}
@@ -219,6 +239,17 @@ export function DbmlView() {
 
       {exporting && activePath !== null && (
         <ExportDbmlModal source={source} relPath={activePath} onClose={() => setExporting(false)} />
+      )}
+
+      {/* An accepted proposal lands in the buffer, not on disk: the save button and Ctrl+Z keep
+          owning it, which is the same bargain the editor's inline edit makes (DBML-017). */}
+      {asking && activePath !== null && (
+        <DbmlAiModal
+          source={source}
+          relPath={activePath}
+          onApply={setSource}
+          onClose={() => setAsking(false)}
+        />
       )}
     </div>
   );

@@ -7,6 +7,7 @@
 - `renderer/src/lib/dbml/` — `parse.ts` (the `@dbml/core` boundary), `model.ts`, `layout.ts`,
   `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`,
   `schema.ts` (the Editor preview's adapter), `documentPath.ts`
+- `renderer/src/lib/dbml/exporters/` — `sql.ts`, `prisma.ts`
 - `renderer/src/state/dbmlStore.ts`
 - `renderer/src/components/dbml/` — `DbmlView.tsx`, `NewDbmlModal.tsx`
 
@@ -304,6 +305,47 @@ its tooltip is open closes it.
 **Frontend dependency**: none outward.
 **Markers**: none.
 
+---
+
+### DBML-014 SQL export is delegated, and an empty result is a failure
+**Implementation**: `renderer/src/lib/dbml/exporters/sql.ts`
+**Behaviour**: PostgreSQL and SQL Server come from `@dbml/core` itself: parse the buffer, hand the
+model to `ModelExporter.export`, return the SQL with a trailing newline. Invalid DBML raises the same
+positioned message the canvas shows, before any dialog opens.
+**Inputs / outputs**: `(source, "postgres" | "mssql")` → SQL text; throws otherwise.
+**Edge cases**: an empty document is refused. A result that is blank is refused too — **`prisma` is
+not routed through here for exactly that reason**: `ModelExporter.export(db, "prisma")` does not
+throw for a target it does not know, it returns an empty string, which would be written out as a
+successful export of nothing.
+**Frontend dependency**: `components/dbml/ExportDbmlModal.tsx`.
+**Markers**: none.
+
+---
+
+### DBML-015 The Prisma schema is written here, and never guesses silently
+**Implementation**: `renderer/src/lib/dbml/exporters/prisma.ts`
+**Behaviour**: Emitted from the canonical model for one of two providers (`postgresql`,
+`sqlserver`). Types map per provider (`varchar(n)` → `@db.VarChar(n)` or `@db.NVarChar(n)`, `text` →
+`@db.Text` or `@db.NVarChar(Max)`, `uuid` → `@db.Uuid` or `@db.UniqueIdentifier`, numeric precision
+kept, and so on). `increment` becomes `@default(autoincrement())`; `now()`-shaped expressions become
+`@default(now())`, UUID generators `@default(uuid())`, anything else `@default(dbgenerated(...))`.
+Both ends of every relation are written, which DBML does not have: the foreign-key side carries
+`@relation(fields:, references:)` with the referential actions, the other side gains the list — or,
+for one-to-one, the optional single field. A many-to-many becomes Prisma's implicit form: a list on
+each side and no foreign key. Named schemas are declared (`schemas`, `previewFeatures`, `@@schema`)
+rather than silently collapsing every table into `public`.
+**Inputs / outputs**: `(model, provider)` → Prisma schema text.
+**Edge cases**: **a composite primary key arrives as an index with `pk` set, not as flagged
+columns** — reading the column flag alone is what left a join table's columns optional and its key
+missing, so the key is resolved from both. A foreign key inside the primary key is required whatever
+its `not null` says. Two references between the same pair of tables, and any self-reference, get a
+relation name, without which Prisma cannot tell them apart. A relation field whose name a column
+already uses is suffixed. A type with no Prisma equivalent becomes `String` under a
+`/// TODO:` line naming the SQL type; an expression index becomes a `///` note.
+**Frontend dependency**: `components/dbml/ExportDbmlModal.tsx`.
+**Markers**: none. The inverse field names come from `inflect.ts` (`DBML-010`), so they inherit its
+heuristics — an awkward plural in a schema is a field name, never a wrong relation.
+
 ## Test coverage
 
 | Test | Source | Kind |
@@ -317,6 +359,8 @@ its tooltip is open closes it.
 | `routing.test.ts` (12) | `renderer/src/lib/dbml/routing.ts` | pure — shapes, lanes, markers |
 | `inflect.test.ts` (56) | `renderer/src/lib/dbml/inflect.ts` | pure — case tables in both languages |
 | `relationPhrase.test.ts` (8) | `renderer/src/lib/dbml/relationPhrase.ts` | pure — sentence choice and agreement |
+| `exporters/sql.test.ts` (5) | `renderer/src/lib/dbml/exporters/sql.ts` | boundary over `@dbml/core` |
+| `exporters/prisma.test.ts` (16) | `renderer/src/lib/dbml/exporters/prisma.ts` | pure — types, keys, both ends of every relation |
 | `viewport.test.ts` (5) | `renderer/src/lib/dbml/viewport.ts` | pure |
 | `documentPath.test.ts` (12) | `renderer/src/lib/dbml/documentPath.ts` | pure |
 | `dbmlStore.test.ts` (18) | `renderer/src/state/dbmlStore.ts` | store, `lib/ipc/commands` mocked |

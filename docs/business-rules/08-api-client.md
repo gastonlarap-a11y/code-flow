@@ -12,7 +12,10 @@ crosses into the sidecar.
 - `src/CodeFlow.App/ApiClient/WebSocketStream.cs`, `SocketIoFraming.cs`, `MqttConnection.cs`,
   `MqttEndpoint.cs`, `StreamRegistry.cs`, `StreamTlsPolicy.cs`
 - `src/CodeFlow.App/ApiClient/ApiCommands.cs`, `ApiHttpCommands.cs`, `ApiStreamCommands.cs`
-- gRPC is **not implemented — deferred**
+- gRPC is **not implemented — deferred**. `GrpcPanel` says so with a `DeferredNotice` before
+  anything is clicked, because the panel knows statically that `api_grpc_describe` and
+  `api_grpc_call` are not registered; a request can still be authored and saved, through commands
+  that do exist.
 
 The command parameter/return contract lives in `01-ipc-surface.md`; this document describes what
 calling each one actually does. The tree/environment/history/cookie stores the CRUD commands

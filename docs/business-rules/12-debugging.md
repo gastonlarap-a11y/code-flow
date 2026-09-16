@@ -7,6 +7,11 @@ commands answer `unknown command`; nothing here has a counterpart in `src/CodeFl
 
 This document is kept as the specification a future implementation would satisfy.
 
+The panel now says so itself, with a `DeferredNotice` above its controls. The deferral was always
+deliberate and always written down here — what was missing is that **a person using the app could
+not tell**, since the only thing separating a deferred feature from a broken one was the raw
+`unknown command 'debug_start'` a button produced. Remove the notice when the backend lands.
+
 ## Commands
 
 Parameters and return types live in `01-ipc-surface.md`; this is what each call actually does.

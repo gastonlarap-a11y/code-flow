@@ -2,7 +2,7 @@
   "name": "codeflow-shell",
   "private": true,
   "license": "MIT",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "Electron shell for CodeFlow: window, tray, native menu, and the bridge to the .NET core",
   "main": "dist/main.js",
   "scripts": {

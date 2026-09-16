@@ -1,16 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Database,
-  FilePlus2,
-  LayoutGrid,
-  RotateCw,
-  Save,
-  Scan,
-  Sparkles,
-  Upload,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { Database, FilePlus2, RotateCw, Save, Sparkles, Upload } from "lucide-react";
 import { Editor, OVERFLOW_SAFE_OPTIONS, monaco } from "../../lib/monacoEditor";
 import { parseDbmlModel } from "../../lib/dbml/parse";
 import { emptyModel, type DbmlSchemaModel } from "../../lib/dbml/model";
@@ -23,12 +12,10 @@ import { EmptyState } from "../common/EmptyState";
 import { IconButton } from "../common/IconButton";
 import { Button } from "../common/Button";
 import { DbmlCanvas, type DbmlCanvasHandle } from "./DbmlCanvas";
+import { DbmlViewportControls } from "./DbmlViewportControls";
 import { NewDbmlModal } from "./NewDbmlModal";
 import { ExportDbmlModal } from "./ExportDbmlModal";
 import { DbmlAiModal } from "./DbmlAiModal";
-
-/** One click of the zoom buttons. */
-const ZOOM_STEP = 1.2;
 
 /**
  * The schema designer: the `.dbml` documents of the open folder, one editor, and the diagram it
@@ -204,22 +191,7 @@ export function DbmlView() {
                   positions={positions}
                   onPlace={(tableKey, point) => void placeTable(project.id, tableKey, point)}
                 />
-                <div className="absolute bottom-2 right-2 flex items-center gap-0.5 rounded-control border border-[var(--cf-border)] bg-[var(--cf-surface)] p-0.5 shadow-sm">
-                  <IconButton
-                    label="dbml.zoomOut"
-                    icon={ZoomOut}
-                    size="sm"
-                    onClick={() => canvasRef.current?.zoomBy(1 / ZOOM_STEP)}
-                  />
-                  <IconButton
-                    label="dbml.zoomIn"
-                    icon={ZoomIn}
-                    size="sm"
-                    onClick={() => canvasRef.current?.zoomBy(ZOOM_STEP)}
-                  />
-                  <IconButton label="dbml.fitView" icon={Scan} size="sm" onClick={() => canvasRef.current?.fit()} />
-                  <IconButton label="dbml.arrange" icon={LayoutGrid} size="sm" onClick={() => void arrange()} />
-                </div>
+                <DbmlViewportControls canvas={canvasRef} onArrange={() => void arrange()} />
               </>
             )}
 

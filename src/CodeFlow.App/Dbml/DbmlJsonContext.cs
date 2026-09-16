@@ -10,6 +10,7 @@ namespace CodeFlow.Dbml;
 /// renderer sends back as whole objects and therefore keeps its snake_case keys in both directions.
 /// </remarks>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
+[JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
 [JsonSerializable(typeof(IReadOnlyList<DbmlTablePosition>))]
 internal sealed partial class DbmlJsonContext : JsonSerializerContext;

@@ -22,22 +22,27 @@ namespace CodeFlow.Ai;
 internal static class AiRouting
 {
     /// <summary>
-    /// The nine task keys, verbatim.
+    /// The ten task keys, verbatim.
     /// </summary>
     /// <remarks>
     /// These strings are the settings namespace: they appear inside every key this class builds and
     /// inside the renderer's own copy in <c>src/lib/aiTasks.ts</c>. Renaming one silently orphans a
     /// user's stored routing rather than failing anywhere.
     /// <para>
-    /// <c>ticket_review</c> is last because it is the newest, and its position is not load-bearing:
-    /// the renderer orders its own table. It earns a key of its own rather than riding on
-    /// <c>review</c> because judging a branch against a work item's acceptance criteria is the one
-    /// task where a user may reasonably want a different — usually larger — model than the one that
-    /// reads a pull request's diff (<c>WI-011</c>).
+    /// <c>ticket_review</c> and <c>dbml</c> are last because they are the newest, and their position
+    /// is not load-bearing: the renderer orders its own table. <c>ticket_review</c> earns a key of
+    /// its own rather than riding on <c>review</c> because judging a branch against a work item's
+    /// acceptance criteria is the one task where a user may reasonably want a different — usually
+    /// larger — model than the one that reads a pull request's diff (<c>WI-011</c>).
+    /// </para>
+    /// <para>
+    /// <c>dbml</c> earns one for the opposite reason: the schema designer's three modes are handed
+    /// their whole input on stdin and need no tools and no repository, so a small or local model is
+    /// a reasonable choice there while being a poor one for a review (<c>DBML-016</c>).
     /// </para>
     /// </remarks>
     public static readonly IReadOnlyList<string> Tasks =
-        ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline", "ticket_review"];
+        ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline", "ticket_review", "dbml"];
 
     /// <summary>The provider used when nothing is configured at all.</summary>
     public const string FallbackProvider = EngineCatalog.FallbackProvider;

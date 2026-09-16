@@ -141,7 +141,7 @@ internal static class Program
             .AddGitCommands(gitNetwork, database)
             .AddFileCommands()
             .AddWatcherCommands(watcher)
-            .AddDbmlCommands(database)
+            .AddDbmlCommands(database, aiRuns, http)
             .AddApiCommands(database)
             .AddApiHttpCommands(apiRequests)
             .AddApiStreamCommands(apiStreams)

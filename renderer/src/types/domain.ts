@@ -552,3 +552,13 @@ export interface DbmlTablePosition {
   x: number;
   y: number;
 }
+
+/**
+ * What the AI is asked to do with a schema document (DBML-016).
+ *
+ * Here rather than in `lib/dbml/` because it is a wire value — the sidecar's `DbmlAssistant` matches
+ * these three strings and answers `unknown DBML assist mode '…'` for anything else — and because
+ * `lib/ipc/commands.ts` must not import from `lib/dbml/`, whose entry point drags in the 15 MB
+ * parser (DBML-006).
+ */
+export type DbmlAssistMode = "edit" | "review" | "explain";

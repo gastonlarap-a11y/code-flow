@@ -19,21 +19,27 @@ Established by parsing the tree, not by reading it:
 
 | Set | Count | Source |
 |---|---|---|
-| Registered in `generate_handler!` | 225 | `src/CodeFlow.App/Program.cs` |
-| Defined with a registered command | 225 | all `commands/*.rs` |
-| Distinct commands invoked by the frontend | 224 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts` |
-| Registered but never invoked | 1 | `debug_is_running` — `DEAD` |
-| Invoked but not registered | 0 | — |
+| Registered on the `CommandRegistry` | 230 | the `Add…Commands(…)` methods `src/CodeFlow.App/Program.cs` calls |
+| Distinct commands invoked by the frontend | 241 | `renderer/src/lib/ipc/commands.ts`, `apiCommands.ts`, `lib/bridge/updater.ts` |
+| Registered but never invoked | 0 | — |
+| Invoked but not registered | 11 | the nine `debug_*` and `api_grpc_call` / `api_grpc_describe` — **`DEAD`** |
 | Duplicate command names | 0 | — |
 
-The registered and defined sets are identical, in both directions. No command reaches the
-backend through any path other than these two wrapper files — no `invoke` from
-`renderer/src/lib/bridge/host.ts` is imported anywhere else in the frontend.
+**The eleven have no sidecar implementation at all**, which is not the same as a dead command:
+each is a typed wrapper the frontend can call and that answers `unknown command`. They are the
+two features whose backend never arrived — the debugger (`12-debugging.md`, whose `BUG-DBG-a`
+describes routing between backends that do not exist) and the API client's gRPC protocol. Nothing
+else registered is unreachable, and nothing else invoked is missing.
 
-Nine frontend files do bypass this boundary, but for *non-command* the shell APIs (window
-controls, dialogs, opener, OS detection, updater, webview drag-and-drop). They are
-inventoried in `02-bootstrap-platform.md`, because their replacements live in the Electron
-shell rather than in the C# core.
+Three wrapper files, not two: the updater's three commands are called from
+`renderer/src/lib/bridge/updater.ts`, which sits beside the shell bridges because that is where
+1.7.2 put it, while the commands themselves are ordinary sidecar commands like any other. No
+`invoke` from `renderer/src/lib/bridge/host.ts` is imported anywhere outside those three files.
+
+Other frontend files do bypass this boundary, but for *non-command* shell APIs (window controls,
+dialogs, opener, OS detection, webview drag-and-drop). They are inventoried in
+`02-bootstrap-platform.md`, because their replacements live in the Electron shell rather than in
+the C# core.
 
 ## Parameter conventions
 
@@ -329,7 +335,7 @@ dependencies; it is not part of the payload.
 | `start_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | AppHandle, State | `startWatching` |
 | `stop_watching`<br><sub>`src/CodeFlow.App/Files/WatcherCommands.cs`</sub> | `repo_path: string` | `Result&lt;(), string&gt;` | State | `stopWatching` |
 
-### `src/CodeFlow.App/Dbml/DbmlCommands.cs` — 4 commands → [15-dbml](15-dbml.md)
+### `src/CodeFlow.App/Dbml/DbmlCommands.cs` — 5 commands → [15-dbml](15-dbml.md)
 
 | Command | Caller parameters | Returns | Injected | TS wrapper |
 |---|---|---|---|---|
@@ -337,6 +343,7 @@ dependencies; it is not part of the payload.
 | `dbml_load_layout`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string` | `Result&lt;Vec&lt;DbmlTablePosition&gt;, string&gt;` | State | `dbmlLoadLayout` |
 | `dbml_save_positions`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string`<br>`positions: Vec&lt;DbmlTablePosition&gt;` | `Result&lt;(), string&gt;` | State | `dbmlSavePositions` |
 | `dbml_clear_layout`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `project_id: string`<br>`rel_path: string` | `Result&lt;(), string&gt;` | State | `dbmlClearLayout` |
+| `dbml_assist`<br><sub>`src/CodeFlow.App/Dbml/DbmlCommands.cs`</sub> | `mode: string`<br>`dbml: string`<br>`instruction: string?`<br>`run_id: string?` | `Result&lt;string, string&gt;` | AI | `dbmlAssist` |
 
 ### `src/CodeFlow.App/Terminal/TerminalCommands.cs` — 4 commands → [11-files-search-terminal](11-files-search-terminal.md)
 

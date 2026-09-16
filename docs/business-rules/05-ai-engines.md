@@ -390,7 +390,7 @@ tools.
 
 ## Task routing
 
-Eight `AiTask` variants (`src/CodeFlow.App/Ai/AiCommands.cs`), each selecting both a provider and a
+Ten task keys (`src/CodeFlow.App/Ai/AiRouting.cs`, `Tasks`), each selecting both a provider and a
 model independently, so one repo can draft commits on a local Ollama model, review PRs on Opus,
 and fix findings through opencode:
 
@@ -405,6 +405,7 @@ and fix findings through opencode:
 | `Conflict` | `conflict` | AI merge-conflict resolution | Text-only (no tool use) — can route to a local model `Fix` can't use |
 | `Inline` | `inline` | Editor inline edit (Ctrl+I) | Text-only, runs while typing — a fast local model is the point |
 | — | `ticket_review` | Branch judged against its work item's acceptance criteria | Ninth key, added after the port. Call site is `src/CodeFlow.App/Tickets/TicketReview.cs` (`14-work-items.md`, `WI-011`); it is in `Judging`, so it inherits the `Read,Grep,Glob` default |
+| — | `dbml` | Schema designer: change, review or explain a `.dbml` document | Tenth key. Call site is `src/CodeFlow.App/Dbml/DbmlAssistant.cs` (`15-dbml.md`, `DBML-016`). The one task bound to the **empty** toolset: it is handed the whole document and needs no repository, so a small or local model fits |
 
 ### Provider resolution (`provider_for`, `src/CodeFlow.App/Ai/AiCommands.cs`)
 

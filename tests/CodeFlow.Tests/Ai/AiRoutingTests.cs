@@ -13,7 +13,7 @@ namespace CodeFlow.Tests.Ai;
 public sealed class AiRoutingTests
 {
     /// <summary>
-    /// The nine task keys, spelled out rather than read from the code under test.
+    /// The ten task keys, spelled out rather than read from the code under test.
     /// </summary>
     /// <remarks>
     /// A test that asserted <c>AiRouting.Tasks</c> against itself would pass through any rename.
@@ -21,9 +21,12 @@ public sealed class AiRoutingTests
     /// a rename orphans a user's stored routing silently — this is the check that makes it loud.
     /// </remarks>
     [Fact]
-    public void The_nine_task_keys_are_verbatim() =>
+    public void The_ten_task_keys_are_verbatim() =>
         Assert.Equal(
-            ["chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline", "ticket_review"],
+            [
+                "chat", "commit", "analyze", "review", "pr_description", "fix", "conflict", "inline",
+                "ticket_review", "dbml",
+            ],
             AiRouting.Tasks);
 
     [Fact]

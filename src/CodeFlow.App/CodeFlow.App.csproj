@@ -15,7 +15,6 @@
 
     <!-- The renderer and shell own the UI; this process never writes to a console the user sees,
          but stdout/stderr stay free for logs because the IPC transport is a pipe, not stdio. -->
-    <InvariantGlobalization>true</InvariantGlobalization>
 
     <!-- Required by [LibraryImport], which the credential store uses to reach Security.framework
          on macOS and advapi32 on Windows. .NET has no cross-platform credential API, so P/Invoke

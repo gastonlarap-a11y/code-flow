@@ -161,6 +161,14 @@ internal sealed class SqlServerIntrospector : IDbmlIntrospector
             value = value[1..^1].Trim();
         }
 
+        // `N'…'` is a Unicode literal, and it is how SSMS and every migration tool write a string
+        // default for an `nvarchar` column. Left alone it reached the diagram as `N'pendiente'` and
+        // was then quoted a second time as if the `N` were part of the value.
+        if (value.Length >= 3 && (value[0] is 'N' or 'n') && value[1] == '\'' && value[^1] == '\'')
+        {
+            value = value[1..];
+        }
+
         return value.Length >= 2 && value[0] == '\'' && value[^1] == '\''
             ? value[1..^1].Replace("''", "'", StringComparison.Ordinal)
             : value.Length == 0 ? null : value;

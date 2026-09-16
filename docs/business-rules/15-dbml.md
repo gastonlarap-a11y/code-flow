@@ -626,7 +626,20 @@ because `increment` already says it. **SQLite's rowid alias requires a primary k
 INTEGER column**: read row by row, the first member of a composite key looked like one, and a join
 table imported as `pedido_id INTEGER [pk, increment]` — found by importing a real database, fixed,
 and pinned by a test. SQLite's `AUTOINCREMENT` is visible only in the stored DDL, which is why the
-table's `sql` is read. Every catalogue query carries a 30-second timeout, for the server that accepts
+table's `sql` is read. PostgreSQL's increment flag is `is_identity = 'YES' OR COALESCE(column_default,
+'') LIKE 'nextval(%'` — **the `COALESCE` is load-bearing**: without it a column with no default gives
+`false OR NULL`, which is `NULL`, and every plain column failed to read. SQL Server's string defaults
+arrive as `(N'…')`; the `N` Unicode prefix is stripped with the parentheses, or it reached the diagram
+as part of the value. Both were found by running these introspectors against real servers
+(`ServerIntrospectorTests`), which no synthetic row set could have caught.
+
+**SQL Server requires the process to run with globalization invariant mode off.**
+`Microsoft.Data.SqlClient` refuses to open a connection under it — `Globalization Invariant Mode is
+not supported`, with no switch to allow it and the upstream fix (`dotnet/SqlClient#3742`) on the
+backlog. The repository had it on in `Directory.Build.props`, so SQL Server introspection failed for
+every user; the third defect the real-server run found, and the only one no unit test could have
+reached, because it is a property of the host process rather than of any code. It is off now, and
+`Directory.Build.props` records why that is safe. Every catalogue query carries a 30-second timeout, for the server that accepts
 the socket and then goes quiet.
 **Frontend dependency**: none outward.
 **Markers**: none.
@@ -639,6 +652,7 @@ the socket and then goes quiet.
 | `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
 | `DbmlSnapshotBuilderTests` (17) | `src/CodeFlow.App/Dbml/DbmlSnapshotBuilder.cs` | pure — synthetic rows, so it covers all four engines' assembly |
 | `SqliteIntrospectorTests` (12) | `src/CodeFlow.App/Dbml/Introspectors/SqliteIntrospector.cs` | scenario — a real SQLite file and real `PRAGMA` calls |
+| `ServerIntrospectorTests` (4) | `Postgres`/`MySql`/`SqlServerIntrospector.cs` | integration — real servers, **skipped with the reason printed** unless `CODEFLOW_TEST_POSTGRES` / `_MYSQL` / `_SQLSERVER` are set; the class remarks carry the `docker run` lines |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
 | `parse.test.ts` (9) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core`, grammar included |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |

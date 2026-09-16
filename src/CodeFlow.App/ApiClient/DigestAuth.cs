@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -224,19 +225,22 @@ internal static class DigestAuth
             $"Digest username=\"{username}\", realm=\"{realm}\", nonce=\"{nonce}\", " +
             $"uri=\"{uri}\", response=\"{response}\"");
 
+        // Invariant culture named explicitly: every value here is already a string, so no culture could
+        // change the header today, but it is a wire format and the formatter should not be the
+        // machine's to choose the day a number joins them.
         if (challenge.ContainsKey("algorithm"))
         {
-            header.Append($", algorithm={algorithm}");
+            header.Append(CultureInfo.InvariantCulture, $", algorithm={algorithm}");
         }
 
         if (challenge.TryGetValue("opaque", out var opaque))
         {
-            header.Append($", opaque=\"{opaque}\"");
+            header.Append(CultureInfo.InvariantCulture, $", opaque=\"{opaque}\"");
         }
 
         if (qop is not null)
         {
-            header.Append($", qop={qop}, nc={Nc}, cnonce=\"{cnonce}\"");
+            header.Append(CultureInfo.InvariantCulture, $", qop={qop}, nc={Nc}, cnonce=\"{cnonce}\"");
         }
 
         return header.ToString();

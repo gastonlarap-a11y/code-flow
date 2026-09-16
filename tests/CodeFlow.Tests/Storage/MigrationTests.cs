@@ -470,7 +470,7 @@ public sealed class MigrationTests : IDisposable
     {
         using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToInt32(command.ExecuteScalar());
+        return Convert.ToInt32(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static string? Scalar(SqliteConnection connection, string sql)

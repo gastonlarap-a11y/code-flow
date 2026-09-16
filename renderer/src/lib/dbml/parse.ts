@@ -16,6 +16,26 @@ import {
  * `App.tsx`, `DbmlPreview` in `EditorPane.tsx`. Importing it from anything eager undoes that.
  */
 
+/**
+ * The grammar to parse with (DBML-019).
+ *
+ * `@dbml/core` ships two. The one named `dbml` is the original PEG parser; `dbmlv2` is the compiler
+ * that replaced it, and it is a **superset** — everything the first accepts, plus the optional
+ * cardinality operators (`<?`, `?>`) that mean "zero or one" rather than "exactly one".
+ *
+ * Reading with the old one was a silent ceiling. Those operators are what dbdiagram.io writes today,
+ * and — the reason this changed — **what `@dbml/core`'s own SQL importer emits**: importing a
+ * PostgreSQL schema with a nullable foreign key produced `Ref: a.id <? b.a_id`, which the classic
+ * grammar rejected with `Expected " " but "?" found`. The app would have handed itself a document it
+ * could not read.
+ *
+ * The two agree on the model: the only difference found was which schema a cross-schema `Ref` is
+ * filed under, and `parseDbmlModel` concatenates every schema's refs, so it never sees it. Both
+ * report failures as `CompilerError { diags }` with a `location.start`, which is what
+ * `formatParseError` unpacks.
+ */
+const GRAMMAR = "dbmlv2";
+
 /** The schema `@dbml/core` files a table under when the document names none. */
 export const DEFAULT_SCHEMA = "public";
 
@@ -86,7 +106,7 @@ export function parseDbmlModel(source: string): ParsedDbml {
   if (!source.trim()) return { ok: true, model: emptyModel() };
 
   try {
-    const database = Parser.parse(source, "dbml");
+    const database = Parser.parse(source, GRAMMAR);
     const model = emptyModel();
 
     for (const schema of database.schemas) {

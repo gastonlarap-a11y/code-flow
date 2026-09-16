@@ -10,9 +10,10 @@
   `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`, `documentPath.ts`,
   `assist.ts`
 - `renderer/src/lib/dbml/exporters/` — `sql.ts`, `prisma.ts`
+- `renderer/src/lib/dbml/importers/` — `sql.ts`, `prisma.ts`
 - `renderer/src/state/dbmlStore.ts`
 - `renderer/src/components/dbml/` — `DbmlView.tsx`, `DbmlCanvas.tsx`, `DbmlViewportControls.tsx`,
-  `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`, `DbmlAiModal.tsx`
+  `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`, `ImportDbmlModal.tsx`, `DbmlAiModal.tsx`
 - `renderer/src/components/editor/DbmlPreview.tsx` — the Editor's quick look, drawn by the same
   canvas
 
@@ -52,6 +53,9 @@ they share, along with whatever else those two have in common. That chunk takes 
 whichever module Rollup picks — at the time of writing, `DbmlViewportControls`, which is thirty
 lines. The name is cosmetic and the size in the build output is the parser. `vite.config.ts`
 deliberately declares no `manualChunks`, so this is the arrangement to read rather than one to pin.
+
+**It parses with the `dbmlv2` grammar**, not the `dbml` one — see `DBML-019`. Both are in the
+package; the second is the compiler that replaced the first, and it is a superset.
 
 The parser does not throw plain `Error`s. Invalid DBML raises a `CompilerError` shaped as
 `{ diags: [...] }`, so `String(e)` and `e.message` both produce `[object Object]`; `formatParseError`
@@ -435,6 +439,93 @@ picture for no reason a reader could connect to the line they were on.
 **Frontend dependency**: `components/editor/EditorPane.tsx`.
 **Markers**: none.
 
+---
+
+### DBML-019 The document is parsed with `dbmlv2`, and the old grammar was a ceiling
+**Implementation**: `renderer/src/lib/dbml/parse.ts` (`GRAMMAR`)
+**Behaviour**: `@dbml/core` ships two grammars. `dbml` is the original PEG parser; `dbmlv2` is the
+compiler that replaced it, and it is a **superset** — everything the first accepts, plus the optional
+cardinality operators (`<?`, `?>`) that mean "zero or one" rather than "exactly one".
+
+Reading with the old one was a silent ceiling: those operators are what dbdiagram.io writes today,
+and — the reason this changed — **what `@dbml/core`'s own SQL importer emits**. A PostgreSQL schema
+with a nullable foreign key converts to `Ref: a.id <? b.a_id`, which the classic grammar rejected
+with `Expected " " but "?" found`. Without the swap, `DBML-020` would have handed the app a document
+it could not read.
+**Inputs / outputs**: unchanged — `parseDbmlModel` still answers `{ ok, model }` or `{ ok, error }`.
+**Edge cases**: the two disagree in exactly one place found: which schema a **cross-schema `Ref`** is
+filed under. `parseDbmlModel` concatenates every schema's refs, so it never sees the difference. Both
+report failures as `CompilerError { diags }` carrying a `location.start`, which is what
+`formatParseError` unpacks — the message text differs between them, the shape does not.
+**Frontend dependency**: none outward.
+**Markers**: none.
+
+---
+
+### DBML-020 SQL import is delegated, and SQLite is refused rather than approximated
+**Implementation**: `renderer/src/lib/dbml/importers/sql.ts`
+**Behaviour**: PostgreSQL, MySQL/MariaDB and SQL Server DDL become DBML through `@dbml/core` itself:
+parse the dialect, export as `dbml`. Nothing is hand-written — a DDL parser per dialect is exactly
+the code not worth owning.
+**Inputs / outputs**: `(sql, "postgres" | "mysql" | "mssql")` → DBML text with a trailing newline.
+**Edge cases**: **SQLite is absent on purpose.** The parser offers `mysql`, `postgres`, `mssql`,
+`snowflake`, `oracle` and `schemarb`, and has no SQLite grammar; feeding SQLite DDL to a neighbouring
+dialect half-works, which is worse than saying no — a SQLite database is read by introspection
+instead. An empty script is refused, and so is one that parsed but yielded no tables, which is what a
+near-miss dialect produces: replacing the user's document with an empty one would be the silent
+version of that. A syntax error carries its `(line:column)` into *their* SQL.
+**Frontend dependency**: `components/dbml/ImportDbmlModal.tsx`.
+**Markers**: none.
+
+---
+
+### DBML-021 The Prisma importer is written here, and round-trips with the exporter
+**Implementation**: `renderer/src/lib/dbml/importers/prisma.ts`
+**Behaviour**: `@dbml/core` has no Prisma grammar in either direction, so this is the mirror of
+`exporters/prisma.ts`: a brace scanner over `model` and `enum` blocks, the shape the rest of the repo
+uses for formats it owns. It reads `@@map`/`@map` (the real table and column names), `@@schema`,
+`@id`/`@unique`/`@@id`/`@@unique`/`@@index`, optionality, `@default`, the native `@db.…` type — which
+wins over the Prisma scalar, because that is the column's real type — and `@relation`, from which it
+writes the `Ref:` lines. It ignores what is Prisma's own bookkeeping and has no database counterpart:
+`generator`, `datasource`, `@updatedAt`, and `view`/`type` blocks.
+
+**The two files are built to round-trip**, and a test asserts it: every SQL type emitted here is one
+the exporter's `mapType` maps back, so a schema that goes out and comes in again is the schema it
+started as rather than drifting a little on each pass.
+**Inputs / outputs**: `(source)` → DBML text.
+**Edge cases**: a relation field is **not** a column — `posts Post[]` and `author User` describe the
+relation, not storage. Only the side carrying `@relation(fields:)` writes the `Ref:`; the other side
+is the same relation seen from the far end, and writing both would draw every line twice. An implicit
+many-to-many has no such side on either model, so it is recognised by its shape — a list on both ends
+— and attributed to whichever model sorts first, so it is written once. A foreign key that is itself
+unique is a one-to-one (`-`), anything else many-to-one (`>`). `@default` is read by **counting
+parentheses, not by regex**: `dbgenerated("gen_random_uuid()")` has two levels and a string, and a
+`[^)]*` pattern stopped at the first `)` and dropped every function-shaped default. Comments are
+stripped with string literals respected, so the `//` in `@default("https://x")` is not one.
+**Frontend dependency**: `components/dbml/ImportDbmlModal.tsx`.
+**Markers**: none. The round-trip test is what found `DBML-015`'s enum-casing bug: the exporter
+matched an enum case-insensitively and then emitted the column under the key it was found by, so
+`enum Estado` produced a field typed `estado` — a Prisma schema that does not compile.
+
+---
+
+### DBML-022 Importing creates a document, and never overwrites the open one
+**Implementation**: `renderer/src/components/dbml/ImportDbmlModal.tsx` · `renderer/src/state/dbmlStore.ts`
+**Behaviour**: An import names a **new** `.dbml` file and opens it. "Import" and "replace what I am
+looking at" are different asks and only one of them is reversible; the document that was open stays
+exactly as it was. The content is converted **before** the file is named on disk, so a script that
+cannot be read says so instead of leaving an empty document behind.
+
+`createDocument(rootPath, name, contents?)` carries it: the same path the "new schema" dialog takes,
+with the starter example as its default. Naming is `documentPath.ts` either way (`DBML-003`).
+**Inputs / outputs**: pasted text or a file picked through `apiPickFile`; the file name defaults to
+the picked file's stem, and only while the field is untouched — a name the user typed outweighs one
+derived for them.
+**Edge cases**: the module's other three actions need an open document; this one does not, and its
+button is never disabled.
+**Frontend dependency**: none outward.
+**Markers**: none.
+
 ## Test coverage
 
 | Test | Source | Kind |
@@ -442,14 +533,16 @@ picture for no reason a reader could connect to the line they were on.
 | `DbmlCommandsTests` (21) | `src/CodeFlow.App/Dbml/` | scenario — real temp directories and a real migrated database |
 | `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
-| `parse.test.ts` (8) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core` |
+| `parse.test.ts` (9) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core`, grammar included |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |
 | `edges.test.ts` (2) | `renderer/src/lib/dbml/edges.ts` | pure |
 | `routing.test.ts` (12) | `renderer/src/lib/dbml/routing.ts` | pure — shapes, lanes, markers |
 | `inflect.test.ts` (56) | `renderer/src/lib/dbml/inflect.ts` | pure — case tables in both languages |
 | `relationPhrase.test.ts` (8) | `renderer/src/lib/dbml/relationPhrase.ts` | pure — sentence choice and agreement |
 | `exporters/sql.test.ts` (5) | `renderer/src/lib/dbml/exporters/sql.ts` | boundary over `@dbml/core` |
-| `exporters/prisma.test.ts` (16) | `renderer/src/lib/dbml/exporters/prisma.ts` | pure — types, keys, both ends of every relation |
+| `exporters/prisma.test.ts` (17) | `renderer/src/lib/dbml/exporters/prisma.ts` | pure — types, keys, both ends of every relation |
+| `importers/sql.test.ts` (8) | `renderer/src/lib/dbml/importers/sql.ts` | boundary — every case re-parses the output |
+| `importers/prisma.test.ts` (17) | `renderer/src/lib/dbml/importers/prisma.ts` | pure, plus the round trip against the exporter |
 | `assist.test.ts` (9) | `renderer/src/lib/dbml/assist.ts` | pure — the four proposal states and the table delta |
 | `viewport.test.ts` (5) | `renderer/src/lib/dbml/viewport.ts` | pure |
 | `documentPath.test.ts` (12) | `renderer/src/lib/dbml/documentPath.ts` | pure |

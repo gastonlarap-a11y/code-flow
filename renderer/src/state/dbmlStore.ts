@@ -36,7 +36,17 @@ interface DbmlState {
   setSource: (source: string) => void;
   save: (rootPath: string) => Promise<void>;
   /** Creates an empty document and opens it. Returns the error to show under the field, or null. */
-  createDocument: (rootPath: string, name: string) => Promise<DocumentPathError | "exists" | null>;
+  /**
+   * Creates a document and opens it.
+   *
+   * `contents` is what an import hands over; leaving it out starts from the one-table example, which
+   * is what the "new schema" dialog wants (DBML-003, DBML-022).
+   */
+  createDocument: (
+    rootPath: string,
+    name: string,
+    contents?: string,
+  ) => Promise<DocumentPathError | "exists" | null>;
   /** Puts one table where a person dropped it, and remembers that. */
   placeTable: (projectId: string, tableKey: string, point: Point) => Promise<void>;
   /** Forgets every position of the open document, so the auto-layout arranges all of it again. */
@@ -128,7 +138,7 @@ export const useDbmlStore = create<DbmlState>((set, get) => ({
     }
   },
 
-  createDocument: async (rootPath, name) => {
+  createDocument: async (rootPath, name, contents = STARTER_SOURCE) => {
     const normalized = normalizeDocumentPath(name);
     if (!normalized.ok) return normalized.reason;
 
@@ -140,14 +150,14 @@ export const useDbmlStore = create<DbmlState>((set, get) => ({
 
     try {
       await api.createFile(rootPath, relPath);
-      await api.writeFileText(rootPath, relPath, STARTER_SOURCE);
+      await api.writeFileText(rootPath, relPath, contents);
     } catch (e) {
       pushErrorToast(String(e));
       return null;
     }
 
     await get().loadDocuments(rootPath);
-    set({ activePath: relPath, source: STARTER_SOURCE, dirty: false, sourceLoading: false, positions: {} });
+    set({ activePath: relPath, source: contents, dirty: false, sourceLoading: false, positions: {} });
 
     return null;
   },

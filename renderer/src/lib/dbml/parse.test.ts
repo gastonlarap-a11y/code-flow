@@ -107,6 +107,30 @@ describe("parseDbmlModel", () => {
     expect(parseDbmlModel("  \n ")).toEqual({ ok: true, model: { tables: [], refs: [], enums: [] } });
   });
 
+  it("reads the optional cardinality operators the old grammar rejected", () => {
+    // DBML-019. `<?` is "zero or one", and it is what `@dbml/core`'s own SQL importer writes for a
+    // nullable foreign key — the classic grammar answered `Expected " " but "?" found`, so the app
+    // would have handed itself a document it could not read.
+    const model = modelOf(`
+Table usuarios {
+  id integer [pk]
+}
+
+Table animales {
+  usuario_id integer
+}
+
+Ref: usuarios.id <? animales.usuario_id
+`);
+
+    expect(model.refs).toHaveLength(1);
+    // The pairing is what matters, not which end the parser reports first: one `usuarios` row
+    // against many `animales` rows.
+    const ends = [model.refs[0]?.from, model.refs[0]?.to];
+    expect(ends.find((end) => end?.table === "usuarios")?.relation).toBe("1");
+    expect(ends.find((end) => end?.table === "animales")?.relation).toBe("*");
+  });
+
   it("reports invalid DBML as a positioned message instead of throwing", () => {
     const parsed = parseDbmlModel("Table {{{");
 

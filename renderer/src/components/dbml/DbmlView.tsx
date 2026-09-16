@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Database, FilePlus2, RotateCw, Save, Sparkles, Upload } from "lucide-react";
+import { Database, Download, FilePlus2, RotateCw, Save, Sparkles, Upload } from "lucide-react";
 import { Editor, OVERFLOW_SAFE_OPTIONS, monaco } from "../../lib/monacoEditor";
 import { parseDbmlModel } from "../../lib/dbml/parse";
 import { emptyModel, type DbmlSchemaModel } from "../../lib/dbml/model";
@@ -15,6 +15,7 @@ import { DbmlCanvas, type DbmlCanvasHandle } from "./DbmlCanvas";
 import { DbmlViewportControls } from "./DbmlViewportControls";
 import { NewDbmlModal } from "./NewDbmlModal";
 import { ExportDbmlModal } from "./ExportDbmlModal";
+import { ImportDbmlModal } from "./ImportDbmlModal";
 import { DbmlAiModal } from "./DbmlAiModal";
 
 /**
@@ -47,6 +48,7 @@ export function DbmlView() {
 
   const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [asking, setAsking] = useState(false);
   const canvasRef = useRef<DbmlCanvasHandle>(null);
 
@@ -137,6 +139,7 @@ export function DbmlView() {
             disabled={activePath === null}
             onClick={() => setExporting(true)}
           />
+          <IconButton label="dbml.import.action" icon={Download} size="sm" onClick={() => setImporting(true)} />
           <IconButton label="dbml.reload" icon={RotateCw} size="sm" onClick={() => void loadDocuments(rootPath)} />
           <IconButton label="dbml.newDocument" icon={FilePlus2} size="sm" onClick={() => setCreating(true)} />
         </div>
@@ -208,6 +211,10 @@ export function DbmlView() {
       )}
 
       {creating && <NewDbmlModal rootPath={rootPath} onClose={() => setCreating(false)} />}
+
+      {/* Import writes a new document rather than replacing the open one, so it needs no document
+          to be open at all — unlike export and the assistant. */}
+      {importing && <ImportDbmlModal rootPath={rootPath} onClose={() => setImporting(false)} />}
 
       {exporting && activePath !== null && (
         <ExportDbmlModal source={source} relPath={activePath} onClose={() => setExporting(false)} />

@@ -20,7 +20,9 @@ public sealed class SqliteIntrospectorTests
     private static async Task<DbmlSchemaSnapshot> ReadAsync(TempDirectory folder, string ddl)
     {
         var path = Path.Combine(folder.Path, "test.db");
-        await using (var db = new SqliteConnection($"Data Source={path}"))
+        // Unpooled, like the introspector: a pooled setup connection keeps the file open, and on
+        // Windows that alone stops TempDirectory from deleting it.
+        await using (var db = new SqliteConnection($"Data Source={path};Pooling=False"))
         {
             await db.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = db.CreateCommand();
@@ -194,6 +196,22 @@ public sealed class SqliteIntrospectorTests
 
         // AUTOINCREMENT creates `sqlite_sequence`, which belongs to the engine.
         Assert.Equal(["a"], snapshot.Tables.Select(t => t.Name));
+    }
+
+    [Fact]
+    public async Task Reading_a_database_leaves_the_users_file_free_to_delete()
+    {
+        // A pooled connection kept the file open after the read, and on Windows an open file cannot
+        // be moved, replaced or deleted — the user's own database stayed locked while CodeFlow ran.
+        // Only Windows can fail this; elsewhere deleting an open file succeeds, so it passes there
+        // by construction and the Windows run is the one that proves it.
+        using var folder = new TempDirectory();
+        await ReadAsync(folder, "CREATE TABLE a (id INTEGER PRIMARY KEY);");
+
+        var path = Path.Combine(folder.Path, "test.db");
+        File.Delete(path);
+
+        Assert.False(File.Exists(path));
     }
 
     [Fact]

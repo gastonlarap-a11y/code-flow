@@ -14,8 +14,9 @@ namespace CodeFlow.Dbml.Introspectors;
 /// per table instead of one query for all of them; fine for a file on the local disk, and the reason
 /// the other three do not work this way.
 /// <para>
-/// **Opened read-only** — `SqliteOpenMode.ReadOnlyOnly` refuses rather than creating a file, so
-/// pointing this at a path that does not exist says so instead of leaving an empty database behind.
+/// **Opened read-only and unpooled.** `SqliteOpenMode.ReadOnly` cannot write, and a missing path is
+/// refused before opening, so pointing this at a file that does not exist says so instead of leaving
+/// an empty database behind. Unpooled because the file belongs to the user: see <c>OpenAsync</c>.
 /// </para>
 /// </remarks>
 internal sealed class SqliteIntrospector : IDbmlIntrospector
@@ -67,8 +68,13 @@ internal sealed class SqliteIntrospector : IDbmlIntrospector
         var db = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = path,
-            // Not `ReadOnly`: that one still creates the file when it is missing.
             Mode = SqliteOpenMode.ReadOnly,
+            // Microsoft.Data.Sqlite pools by default, and a pooled connection keeps the file open
+            // after it is disposed. On Windows an open file cannot be moved, replaced or deleted, so
+            // reading a schema once left the user's own database locked for as long as CodeFlow ran.
+            // Found on a real Windows machine: the tests could not even remove their temp file. The
+            // server introspectors turn pooling off for the same reason — this is a one-off read.
+            Pooling = false,
         }.ToString());
 
         try

@@ -47,9 +47,15 @@ function splitType(type: string): { base: string; args: string[] } {
   };
 }
 
-function mapType(column: DbmlColumnModel, enums: ReadonlySet<string>, provider: PrismaProvider): MappedType {
+function mapType(
+  column: DbmlColumnModel,
+  enums: ReadonlyMap<string, string>,
+  provider: PrismaProvider,
+): MappedType {
   const { base, args } = splitType(column.type);
-  if (enums.has(base)) return { type: base, native: null, unmapped: null };
+  // The declared spelling, not the key it was found by — see `toPrisma`.
+  const declaredEnum = enums.get(base);
+  if (declaredEnum !== undefined) return { type: declaredEnum, native: null, unmapped: null };
 
   const sqlServer = provider === "sqlserver";
   const length = args[0];
@@ -291,7 +297,10 @@ function pad(value: string, width: number): string {
 
 export function toPrisma(model: DbmlSchemaModel, provider: PrismaProvider): string {
   const tables = new Map(model.tables.map((table) => [table.key, table]));
-  const enums = new Set(model.enums.map((e) => e.name.toLowerCase()));
+  // Keyed lower-case because a column's type is matched case-insensitively, but holding the name as
+  // **declared**: Prisma is case-sensitive, so a field typed `estado` against an `enum Estado` is a
+  // schema that does not compile.
+  const enums = new Map(model.enums.map((e) => [e.name.toLowerCase(), e.name]));
   const lang = guessLanguage(
     model.tables.flatMap((table) => [table.name, ...table.columns.map((c) => c.name)]),
     "en",

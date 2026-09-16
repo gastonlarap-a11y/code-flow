@@ -90,6 +90,30 @@ describe("toPrisma", () => {
     expect(schema).toMatch(/status\s+order_status\?/);
   });
 
+  it("types a column with the enum's declared spelling, not a lower-cased one", () => {
+    // Prisma is case-sensitive. The enum was matched case-insensitively and then emitted under the
+    // key it was found by, so `enum Estado` got a field typed `estado` — a schema that does not
+    // compile. Found by the importer's round-trip test.
+    const schema = toPrisma(
+      modelOf(`
+Enum Estado {
+  ACTIVO
+  INACTIVO
+}
+
+Table pedidos {
+  id integer [pk]
+  estado Estado [not null]
+}
+`),
+      "postgresql",
+    );
+
+    expect(schema).toContain("enum Estado {");
+    expect(schema).toMatch(/estado\s+Estado\b/);
+    expect(schema).not.toMatch(/estado\s+estado\b/);
+  });
+
   it("carries a named unique index over as @@unique", () => {
     expect(toPrisma(SHOP, "postgresql")).toContain('@@unique([code], name: "ix_coupons_code")');
   });

@@ -7,12 +7,14 @@
 - `src/CodeFlow.App/Ai/Prompts/` — `DBML_EDIT_PROMPT.txt`, `DBML_REVIEW_PROMPT.txt`,
   `DBML_EXPLAIN_PROMPT.txt`
 - `renderer/src/lib/dbml/` — `parse.ts` (the `@dbml/core` boundary), `model.ts`, `layout.ts`,
-  `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`,
-  `schema.ts` (the Editor preview's adapter), `documentPath.ts`, `assist.ts`
+  `edges.ts`, `routing.ts`, `inflect.ts`, `relationPhrase.ts`, `viewport.ts`, `documentPath.ts`,
+  `assist.ts`
 - `renderer/src/lib/dbml/exporters/` — `sql.ts`, `prisma.ts`
 - `renderer/src/state/dbmlStore.ts`
-- `renderer/src/components/dbml/` — `DbmlView.tsx`, `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`,
-  `DbmlAiModal.tsx`
+- `renderer/src/components/dbml/` — `DbmlView.tsx`, `DbmlCanvas.tsx`, `DbmlViewportControls.tsx`,
+  `NewDbmlModal.tsx`, `ExportDbmlModal.tsx`, `DbmlAiModal.tsx`
+- `renderer/src/components/editor/DbmlPreview.tsx` — the Editor's quick look, drawn by the same
+  canvas
 
 A workbench for [DBML](https://dbml.dbdiagram.io) documents: the `.dbml` files of the open folder,
 an editor, and the entity diagram the text produces, updated as it is typed.
@@ -23,10 +25,9 @@ user's folder, so opening, saving and creating one are `read_file_text`, `write_
 rendering all live in the renderer, where `@dbml/core` is. What the sidecar owns is the one thing
 the renderer cannot do: walking a folder for documents.
 
-That leaves `renderer/src/components/editor/DbmlPreview.tsx` (the `.dbml` preview inside the Editor
-module) standing. It shares `lib/dbml/schema.ts` and `components/editor/DbmlDiagram.tsx` with this
-module rather than duplicating either, and stays as the quick look at a document you already have
-open in the file tree.
+`renderer/src/components/editor/DbmlPreview.tsx` (the `.dbml` preview inside the Editor module)
+stays as the quick look at a document you already have open in the file tree, and **draws with this
+module's canvas** — see `DBML-018`.
 
 ## Commands
 
@@ -43,13 +44,19 @@ table. One line each:
 
 `renderer/src/lib/dbml/parse.ts` is the only module that imports the parser. It is 15 MB minified
 — four times Monaco — so everything that reaches it sits behind a `lazy()`: `DbmlView` in
-`App.tsx`, and `DbmlPreview` in `EditorPane.tsx`. The production build puts it in a chunk of its
-own, which is the arrangement to preserve; importing `schema.ts` from anything eager undoes it.
+`App.tsx`, and `DbmlPreview` in `EditorPane.tsx`. **The invariant is that it stays out of the eager
+`index` chunk**, and importing `parse.ts` from anything eager is what would undo it.
+
+It is not a chunk of its own: both lazy entries need the parser, so Rollup hoists it into the chunk
+they share, along with whatever else those two have in common. That chunk takes its name from
+whichever module Rollup picks — at the time of writing, `DbmlViewportControls`, which is thirty
+lines. The name is cosmetic and the size in the build output is the parser. `vite.config.ts`
+deliberately declares no `manualChunks`, so this is the arrangement to read rather than one to pin.
 
 The parser does not throw plain `Error`s. Invalid DBML raises a `CompilerError` shaped as
 `{ diags: [...] }`, so `String(e)` and `e.message` both produce `[object Object]`; `formatParseError`
 unpacks it into the positioned `message (line:column)` the editor shows. That unpacking is pinned by
-`schema.test.ts`, which exists because it broke across the 8→9 major bump.
+`parse.test.ts`, which carries it because it broke across the 8→9 major bump.
 
 ## Rules
 
@@ -403,6 +410,31 @@ as a danger chip. The rejected answer is shown verbatim under the error, so "it 
 **Frontend dependency**: none outward.
 **Markers**: none.
 
+---
+
+### DBML-018 One diagram, drawn in both places it appears
+**Implementation**: `renderer/src/components/editor/DbmlPreview.tsx` · `renderer/src/components/dbml/DbmlCanvas.tsx`
+**Behaviour**: The Editor's `.dbml` preview and the schema module draw with the **same** canvas. There
+used to be two: `components/editor/DbmlDiagram.tsx` laid cards out in a `flex-wrap` and joined their
+*centres* with straight dashed lines, over a second adapter (`lib/dbml/schema.ts`) that narrowed the
+parser's model to what it drew. So the same file looked different depending on which door it was
+opened through — no auto-layout, no column anchors, no relationship phrases — and a fix to the
+diagram reached only one of them. Both files are gone, and with them their adapter's test, whose two
+assertions `parse.test.ts` already made.
+
+The shared zoom/fit cluster is `DbmlViewportControls`, whose `onArrange` is optional: re-arranging
+means forgetting positions a person saved, and the preview has none.
+**Inputs / outputs**: `(content, path)` → the diagram. `path` is the canvas's `documentKey`, so
+switching tabs re-fits.
+**Edge cases**: the preview's drag is **ephemeral** — persistence is keyed on a project and a
+document (`DBML-005`) and belongs to the schema module, which is the surface that has both. Nothing
+is lost by it: `computeLayout` is deterministic, so reopening the file gives the same picture back.
+The preview takes **no scroll ref** in split mode, unlike the Markdown one: the diagram is a pan/zoom
+surface, not a vertical rendering of the text beside it, and syncing a scroll ratio to it moved the
+picture for no reason a reader could connect to the line they were on.
+**Frontend dependency**: `components/editor/EditorPane.tsx`.
+**Markers**: none.
+
 ## Test coverage
 
 | Test | Source | Kind |
@@ -411,7 +443,6 @@ as a danger chip. The rejected answer is shown verbatim under the error, so "it 
 | `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
 | `parse.test.ts` (8) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core` |
-| `schema.test.ts` (3) | `renderer/src/lib/dbml/schema.ts` | adapter smoke |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |
 | `edges.test.ts` (2) | `renderer/src/lib/dbml/edges.ts` | pure |
 | `routing.test.ts` (12) | `renderer/src/lib/dbml/routing.ts` | pure — shapes, lanes, markers |

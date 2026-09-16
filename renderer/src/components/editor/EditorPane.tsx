@@ -628,7 +628,7 @@ export function EditorPane({
                 <MarkdownPreview content={content} />
               ) : (
                 <Suspense fallback={dbmlLoading}>
-                  <DbmlPreview content={content} />
+                  <DbmlPreview content={content} path={activeTab.path} />
                 </Suspense>
               )
             ) : viewMode === "split" ? (
@@ -638,8 +638,11 @@ export function EditorPane({
                   {previewKind === "markdown" ? (
                     <MarkdownPreview content={content} ref={previewScrollRef} />
                   ) : (
+                    // No scroll ref, and that is the point: the diagram is a pan/zoom surface, not a
+                    // vertical rendering of the text beside it. Syncing a scroll ratio to it moved
+                    // the picture for no reason a reader could connect to the line they were on.
                     <Suspense fallback={dbmlLoading}>
-                      <DbmlPreview content={content} ref={previewScrollRef} />
+                      <DbmlPreview content={content} path={activeTab.path} />
                     </Suspense>
                   )}
                 </div>

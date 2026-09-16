@@ -16,6 +16,7 @@ import { Checkbox } from "../common/Checkbox";
 import { IconButton } from "../common/IconButton";
 import { Tooltip } from "../common/Tooltip";
 import { CollapsibleSection } from "../common/CollapsibleSection";
+import { DeferredNotice } from "../common/DeferredNotice";
 import { EmptyState } from "../common/EmptyState";
 import { Select } from "../common/Select";
 import { KeyValueTable } from "./KeyValueTable";
@@ -207,6 +208,7 @@ export function GrpcPanel({ tabId }: { tabId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <DeferredNotice feature="deferred.grpc" />
       <div className="shrink-0 space-y-2 border-b border-[var(--cf-border)] px-3 py-2">
         <div className="flex items-end gap-2">
           <div className="w-56">

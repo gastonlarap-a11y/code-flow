@@ -1483,6 +1483,11 @@ export const translations = {
     "shortcuts.conflict": "Another action already uses this combination",
     "shortcuts.conflictEditor": "The editor already uses this combination for \"{name}\"",
     "debug.title": "Run and Debug",
+    "deferred.title": "{feature} has no backend yet.",
+    "deferred.body":
+      "It was deferred out of this version on purpose: the interface is here and the commands behind it are not, so anything that has to reach the core will fail until it lands. What you set up is saved.",
+    "deferred.debugger": "The debugger",
+    "deferred.grpc": "gRPC",
     "debug.programPlaceholder": "Script to run with Node…",
     "debug.adapterPlaceholder": "Debug adapter command…",
     "debug.adapterHint": "Needs {install}",
@@ -3237,6 +3242,11 @@ export const translations = {
     "shortcuts.conflict": "Otra acción ya usa esta combinación",
     "shortcuts.conflictEditor": "El editor ya usa esta combinación para «{name}»",
     "debug.title": "Ejecutar y depurar",
+    "deferred.title": "{feature} todavía no tiene backend.",
+    "deferred.body":
+      "Se aplazó a propósito fuera de esta versión: la interfaz está y los comandos que hay detrás no, así que todo lo que tenga que llegar al core fallará hasta que se implemente. Lo que configures se guarda.",
+    "deferred.debugger": "El depurador",
+    "deferred.grpc": "gRPC",
     "debug.programPlaceholder": "Script a ejecutar con Node…",
     "debug.adapterPlaceholder": "Comando del adaptador…",
     "debug.adapterHint": "Necesita {install}",

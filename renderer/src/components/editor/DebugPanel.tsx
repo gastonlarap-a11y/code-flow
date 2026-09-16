@@ -10,6 +10,7 @@ import {
   Eraser,
 } from "lucide-react";
 import { IconButton } from "../common/IconButton";
+import { DeferredNotice } from "../common/DeferredNotice";
 import { StopSquare } from "../../lib/ui/icons";
 import { useDebugStore } from "../../state/debugStore";
 import { DEBUG_ADAPTERS, adapterById, adapterForFile } from "../../lib/debugAdapters";
@@ -114,6 +115,7 @@ export function DebugPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <DeferredNotice feature="deferred.debugger" />
       <div className="shrink-0 border-b border-[var(--cf-border)] p-2">
         <div className="flex items-center gap-1">
           <input

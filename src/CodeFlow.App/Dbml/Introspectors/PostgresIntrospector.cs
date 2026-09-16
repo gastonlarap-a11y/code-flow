@@ -47,7 +47,10 @@ internal sealed class PostgresIntrospector : IDbmlIntrospector
                      ELSE c.data_type
                    END AS type,
                    c.is_nullable = 'NO' AS not_null,
-                   c.is_identity = 'YES' OR c.column_default LIKE 'nextval(%' AS increment,
+                   -- COALESCE, not a bare LIKE: a column with no default makes `NULL LIKE …` NULL,
+                   -- and `false OR NULL` is NULL rather than false — a boolean column the reader
+                   -- cannot read. Every plain column without a default hit it.
+                   c.is_identity = 'YES' OR COALESCE(c.column_default, '') LIKE 'nextval(%' AS increment,
                    c.column_default,
                    c.ordinal_position
             FROM information_schema.columns c

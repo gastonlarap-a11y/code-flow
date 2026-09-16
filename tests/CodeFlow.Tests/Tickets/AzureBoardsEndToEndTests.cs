@@ -265,11 +265,12 @@ public sealed class AzureBoardsEndToEndTests
         try
         {
             var title = fields.TryGetProperty("System.Title", out var t) ? t.GetString()! : "sin título";
-            var directory = TicketPaths.DirectoryFor(root, org, project, ids[0].ToString(), title);
+            var id = ids[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var directory = TicketPaths.DirectoryFor(root, org, project, id, title);
 
             var ticket = new Ticket(
-                TicketStore.IdFor("azure", org, project, ids[0].ToString()),
-                "azure", org, project, ids[0].ToString(), title,
+                TicketStore.IdFor("azure", org, project, id),
+                "azure", org, project, id, title,
                 fields.TryGetProperty("System.State", out var s) ? s.GetString()! : "",
                 fields.TryGetProperty("System.WorkItemType", out var w) ? w.GetString()! : "",
                 null,

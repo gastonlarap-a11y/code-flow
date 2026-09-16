@@ -14,9 +14,23 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
 
-    <!-- The app persists user text (repo paths, prompts, review findings) in many languages,
-         so culture-sensitive behaviour must be predictable rather than machine-dependent. -->
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      The app persists user text (repo paths, prompts, review findings) in many languages, so
+      culture-sensitive behaviour must be predictable rather than machine-dependent.
+
+      That goal is kept by the code and enforced by the analyzers, NOT by invariant mode — which
+      used to be `true` here and had to go: Microsoft.Data.SqlClient refuses to open a connection
+      under it ("Globalization Invariant Mode is not supported", no switch, dotnet/SqlClient#3742 on
+      the backlog), so the schema designer could not read SQL Server at all (DBML-026).
+
+      Turning it off is safe because nothing relied on it. The sidecar has no bare ToLower/ToUpper
+      and no culture-aware string comparison; and with invariant mode off, CA1305 and its siblings
+      stop being suppressed and become real build errors under TreatWarningsAsErrors — they surfaced
+      exactly seven call sites, all made explicit. A new culture-dependent call now fails the build
+      instead of silently varying by machine, which is a stronger guarantee than the runtime switch.
+      ICU is present on every target: macOS ships it, and Windows 10 1903+ bundles it.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
 
     <!-- Deterministic output keeps build artifacts comparable across machines and CI. -->
     <Deterministic>true</Deterministic>

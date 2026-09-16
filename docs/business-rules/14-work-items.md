@@ -68,8 +68,10 @@ and falls back to `{BaseDirectory}/tickets`. Blank counts as unset. The id leads
 so directories sort and complete by the number a person quotes, and a retitled ticket keeps its
 prefix.
 **Edge cases**: `Slug` folds accented letters through an explicit table, **not**
-`Normalize(FormD)` — the project builds with `InvariantGlobalization`, under which normalisation is
-a no-op and *Facturación* would name its directory `facturaci-n`. Segments are cut at 60 characters
+`Normalize(FormD)` — the project was built with `InvariantGlobalization`, under which normalisation
+was a no-op and *Facturación* would have named its directory `facturaci-n`. Invariant mode is now off
+(SQL Server's client refuses it, `15-dbml.md` `DBML-026`), and the table stays anyway: a directory
+name must not depend on which ICU build a machine happens to ship. Segments are cut at 60 characters
 with no trailing separator.
 **Case is preserved.** It was lower-cased first, and a user who opened the folder for *CF-E2E Ajuste
 de tabla (criterios en prosa)* found `3-cf-e2e-ajuste-de-tabla-criterios-en-prosa` and reported it as

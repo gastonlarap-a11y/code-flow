@@ -618,7 +618,12 @@ keys, relations and indexes, for the same ordering reason (`sys.index_columns.ke
 `auto_increment` outright; every query is scoped with `DATABASE()`, without which
 `information_schema` returns every table on the server. **SQLite** reads `PRAGMA` functions, one
 round trip per table, and is opened `ReadOnly` so a path that does not exist is refused rather than
-created.
+created. **Every introspector turns connection pooling off.** For the servers it avoids holding a
+socket open to a database the user reads once; for SQLite it is a correctness rule on Windows, where
+`Microsoft.Data.Sqlite`'s default pool keeps the file open after the connection is disposed and an
+open file cannot be moved, replaced or deleted — reading a schema left the user's own database locked
+for as long as CodeFlow ran. Found by running the tests on a real Windows machine, where they could
+not remove their own temp file.
 **Inputs / outputs**: a connection and its password → a `DbmlSchemaSnapshot`.
 **Edge cases**: each engine reports defaults in its own wrapping and each is unwrapped — PostgreSQL's
 `::cast`, SQL Server's doubled parentheses, SQLite's quotes; a PostgreSQL `nextval(…)` is dropped
@@ -651,8 +656,8 @@ the socket and then goes quiet.
 | `DbmlCommandsTests` (21) | `src/CodeFlow.App/Dbml/` | scenario — real temp directories and a real migrated database |
 | `DbmlAssistantTests` (16) | `src/CodeFlow.App/Dbml/DbmlAssistant.cs` | seam — `ScriptedEngine` over the `AiRunner` delegate, no subprocess |
 | `DbmlSnapshotBuilderTests` (17) | `src/CodeFlow.App/Dbml/DbmlSnapshotBuilder.cs` | pure — synthetic rows, so it covers all four engines' assembly |
-| `SqliteIntrospectorTests` (12) | `src/CodeFlow.App/Dbml/Introspectors/SqliteIntrospector.cs` | scenario — a real SQLite file and real `PRAGMA` calls |
-| `ServerIntrospectorTests` (4) | `Postgres`/`MySql`/`SqlServerIntrospector.cs` | integration — real servers, **skipped with the reason printed** unless `CODEFLOW_TEST_POSTGRES` / `_MYSQL` / `_SQLSERVER` are set; the class remarks carry the `docker run` lines |
+| `SqliteIntrospectorTests` (13) | `src/CodeFlow.App/Dbml/Introspectors/SqliteIntrospector.cs` | scenario — a real SQLite file and real `PRAGMA` calls; the file-lock case only bites on Windows |
+| `ServerIntrospectorTests` (4) | `Postgres`/`MySql`/`SqlServerIntrospector.cs` | integration — real servers, **skipped with the reason printed** unless `CODEFLOW_TEST_POSTGRES` / `_MYSQL` / `_SQLSERVER` are set; the class remarks carry the `docker run` lines. `_SQLSERVER=(localdb)\MSSQLLocalDB` runs it with Windows integrated authentication |
 | `MigrationTests` (table and index counts) | `src/CodeFlow.App/Storage/Schema.cs` | scenario |
 | `parse.test.ts` (9) | `renderer/src/lib/dbml/parse.ts` | boundary over `@dbml/core`, grammar included |
 | `layout.test.ts` (14) | `renderer/src/lib/dbml/layout.ts` | pure — invariants, never pixels |

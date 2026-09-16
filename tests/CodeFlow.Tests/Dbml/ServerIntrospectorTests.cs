@@ -34,6 +34,10 @@ namespace CodeFlow.Tests.Dbml;
 ///   dotnet test --filter "FullyQualifiedName~ServerIntrospector"
 /// </code>
 /// <para>
+/// On Windows, <c>CODEFLOW_TEST_SQLSERVER=(localdb)\MSSQLLocalDB</c> — a bare instance name — runs the
+/// SQL Server test with integrated authentication against LocalDB instead.
+/// </para>
+/// <para>
 /// The schema is chosen for the places these catalogues go wrong silently: a composite primary key
 /// (whose first member must not read as an increment), a composite foreign key whose child columns
 /// are named differently from the parent's (so a mispaired read is visible, not coincidentally
@@ -177,7 +181,7 @@ public sealed class ServerIntrospectorTests
     [Fact]
     public async Task SqlServer_reads_the_schema_it_was_given()
     {
-        var server = Server("CODEFLOW_TEST_SQLSERVER");
+        var server = SqlServer("CODEFLOW_TEST_SQLSERVER");
         var database = ThrowawayName();
         var ct = TestContext.Current.CancellationToken;
 
@@ -323,10 +327,41 @@ public sealed class ServerIntrospectorTests
         return new ServerSpec(parts[0], int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture), parts[2], parts[3]);
     }
 
+    /// <summary>
+    /// SQL Server takes a second form: a bare instance name with no colon, such as
+    /// <c>(localdb)\MSSQLLocalDB</c>, which means Windows integrated authentication.
+    /// </summary>
+    /// <remarks>
+    /// It is how a developer on Windows reaches a local instance, and it drives the introspector's
+    /// other branch — no username, <c>IntegratedSecurity</c> — which SQL authentication never
+    /// touches. GitHub's Windows runners ship LocalDB, so this is also what makes the SQL Server path
+    /// checkable on a real Windows machine.
+    /// </remarks>
+    private static ServerSpec SqlServer(string variable)
+    {
+        var raw = Environment.GetEnvironmentVariable(variable);
+        if (raw is { Length: > 0 } && !raw.Contains(':', StringComparison.Ordinal))
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), $"{variable}={raw} is integrated authentication, which needs Windows");
+            return new ServerSpec(raw, 0, string.Empty, string.Empty);
+        }
+
+        return Server(variable);
+    }
+
     private static string ThrowawayName() => $"cf_intro_{Guid.NewGuid():N}"[..17];
 
+    /// <remarks>
+    /// An integrated-authentication spec has no port and no user; passing them as null is what the
+    /// saved connection would hold, so the introspector takes the branch a real one would.
+    /// </remarks>
     private static DbmlConnection Connection(string driver, ServerSpec server, string database) =>
-        new("test", "test", driver, server.Host, server.Port, database, server.User, null, false, "now", "now");
+        new(
+            "test", "test", driver, server.Host,
+            server.Port > 0 ? server.Port : null,
+            database,
+            server.User.Length > 0 ? server.User : null,
+            null, false, "now", "now");
 
     private static string PostgresString(ServerSpec s, string database) => new NpgsqlConnectionStringBuilder
     {
@@ -349,16 +384,29 @@ public sealed class ServerIntrospectorTests
         AllowPublicKeyRetrieval = true,
     }.ToString();
 
-    private static string SqlServerString(ServerSpec s, string database) => new SqlConnectionStringBuilder
+    private static string SqlServerString(ServerSpec s, string database)
     {
-        DataSource = $"{s.Host},{s.Port}",
-        UserID = s.User,
-        Password = s.Password,
-        InitialCatalog = database,
-        Encrypt = false,
-        TrustServerCertificate = true,
-        Pooling = false,
-    }.ToString();
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = s.Port > 0 ? $"{s.Host},{s.Port}" : s.Host,
+            InitialCatalog = database,
+            Encrypt = false,
+            TrustServerCertificate = true,
+            Pooling = false,
+        };
+
+        if (s.User.Length == 0)
+        {
+            builder.IntegratedSecurity = true;
+        }
+        else
+        {
+            builder.UserID = s.User;
+            builder.Password = s.Password;
+        }
+
+        return builder.ToString();
+    }
 
     private static async Task ExecAsync(DbConnection db, CancellationToken ct, params string[] statements)
     {

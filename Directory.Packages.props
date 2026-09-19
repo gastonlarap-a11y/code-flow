@@ -65,7 +65,7 @@
       could log it.
     -->
     <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <PackageVersion Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
 

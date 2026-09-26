@@ -18,7 +18,7 @@
     "@types/node": "^26.5.0",
     "electron": "44.3.0",
     "electron-builder": "26.16.1",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "globals": "^17.11.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.70.0"
